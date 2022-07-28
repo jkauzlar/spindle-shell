@@ -1,5 +1,6 @@
 mod scanner;
 mod environment;
+mod parser;
 
 use std::io::{stdout, stdin, Write};
 use crossterm::{
