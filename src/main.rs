@@ -1,44 +1,44 @@
+use std::iter::Scan;
+
+use crate::parser::{Command, Parser, ParserError};
+use crate::scanner::{Scanner};
+use crate::shell::{ Shell, ShellApplicationEnvironment, ShellCommand};
+
 mod scanner;
 mod environment;
 mod parser;
+mod values;
+mod types;
+mod shell;
 
-use std::io::{stdout, stdin, Write};
-use crossterm::{
-    ExecutableCommand, QueueableCommand,
-    terminal, cursor, style::{self, Stylize}, Result
-};
-use crossterm::style::PrintStyledContent;
-use crate::scanner::Scanner;
+struct App { }
 
-fn main() -> Result<()> {
-    let mut stdout = stdout();
-
-    loop {
-        let mut prompt = format!("{} >", "");
-        stdout.queue(style::PrintStyledContent("> ".stylize()));
-        stdout.flush();
-
-        let mut buf = String::new();
-        let result = stdin().read_line(&mut buf);
-
-        // remove trailing newline
-        buf.remove(buf.len() - 1);
-
-        match result {
-            Ok(_) => {
-                if String::from("exit").eq(&buf) {
-                    break;
-                } else {
-                    Scanner::scan(&buf);
-                    stdout.queue(PrintStyledContent(buf.stylize()));
-                    stdout.flush()?;
+impl ShellApplicationEnvironment for App {
+    fn handle(&mut self, inp: &str) -> ShellCommand {
+        match Scanner::scan(inp) {
+            Ok(tkns) => {
+                match Parser::parse(tkns) {
+                    Ok(cmd) => {
+                        ShellCommand::OUT(cmd.to_string())
+                    }
+                    Err(err) => {
+                        ShellCommand::ERR(err.to_string())
+                    }
                 }
             }
-            Err(err) => {}
+            Err(err) => {
+                ShellCommand::ERR(err.to_string())
+            }
         }
     }
 
-    stdout.queue(PrintStyledContent("Goodbye".stylize()));
-    stdout.flush()?;
-    Ok(())
+    fn supply(&self) -> String {
+        String::from("prompt")
+    }
+}
+
+fn main() {
+    let mut app = App { };
+
+    Shell::new(Box::new(app)).run();
 }

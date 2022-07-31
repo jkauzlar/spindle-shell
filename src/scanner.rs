@@ -1,10 +1,12 @@
 use std::error::Error;
-use std::fmt::{Debug, Display, Formatter, Write};
-use std::iter::Scan;
-use std::str::{Chars, FromStr};
-use bigdecimal::BigDecimal;
-use num_bigint::BigInt;
+use std::fmt::{Debug, Display, Formatter};
+use std::str::FromStr;
+
+use bigdecimal::{BigDecimal, ParseBigDecimalError};
+use num_bigint::{BigInt, ParseBigIntError};
 use reqwest::Url;
+
+use crate::values::{Value, ValueBoolean, ValueFractional, ValueIntegral, ValueString, ValueTime, ValueUrl};
 
 pub struct Scanner {
     chars: Vec<char>,
@@ -49,12 +51,22 @@ impl Scanner {
                     let decimal_digits = self.read_while(Scanner::is_digit);
                     digits.push('.');
                     digits.push_str(decimal_digits.as_str());
-                    if let Ok(dec_str) = BigDecimal::from_str(digits.as_str()) {
-                        self.push_token(Token::Fractional(dec_str));
+                    match Token::new_fractional(digits) {
+                        Ok(tkn) => {
+                            self.push_token(tkn);
+                        }
+                        Err(err) => {
+                            return Err(ScannerError::new(err.to_string().as_str()));
+                        }
                     }
                 } else {
-                    if let Ok(big_int) = BigInt::from_str(digits.as_str()) {
-                        self.push_token(Token::Integral(big_int));
+                    match Token::new_integral(digits) {
+                        Ok(tkn) => {
+                            self.push_token(tkn);
+                        }
+                        Err(err) => {
+                            return Err(ScannerError::new(err.to_string().as_str()));
+                        }
                     }
                 }
                 if self.check_here(Scanner::is_alpha) {
@@ -65,18 +77,23 @@ impl Scanner {
                 self.pop();
                 if let Some(a_str) = self.read_until(true, false, |c| c == '"') {
                     self.pop(); // read the closing double-quote
-                    self.push_token(Token::String(a_str));
+                    self.push_token(Token::new_string(a_str));
                 } else {
                     return Err(ScannerError::new(format!("Missing closing '\"'").as_str()));
                 }
             } else if Scanner::is_alpha(c) || c == '_' {
-                if let id_str = self.read_identifier()? {
-                    if id_str.eq(&String::from("true")) {
-                        self.push_token(Token::Boolean(true));
-                    } else if id_str.eq(&String::from("false")) {
-                        self.push_token(Token::Boolean(false));
-                    } else {
-                        self.push_token(Token::Identifier(id_str));
+                match self.read_identifier() {
+                    Ok(id_str) => {
+                        if id_str.eq(&String::from("true")) {
+                            self.push_token(Token::new_boolean(true));
+                        } else if id_str.eq(&String::from("false")) {
+                            self.push_token(Token::new_boolean(false));
+                        } else {
+                            self.push_token(Token::Identifier(id_str));
+                        }
+                    }
+                    Err(err) => {
+                        return Err(err);
                     }
                 }
             } else if c == '=' {
@@ -131,7 +148,7 @@ impl Scanner {
                     if self.check_here(|c| c == '-') {
                         self.pop();
                         if let Some(rest) = self.read_remaining() {
-                            self.push_token(Token::String(rest));
+                            self.push_token(Token::new_string(rest));
                         }
                     } else {
                         if let Ok(id) = self.read_identifier() {
@@ -161,12 +178,12 @@ impl Scanner {
             } else if c == '@' {
                 self.pop();
                 if let Some(url_str) = self.read_until(false, true, Scanner::is_space) {
-                    match Url::parse(url_str.as_str()) {
-                        Ok(url) => {
-                            self.push_token(Token::Uri(url));
+                    match Token::new_url(url_str) {
+                        Ok(tkn) => {
+                            self.push_token(tkn);
                         },
                         Err(err) => {
-                            return Err(ScannerError::new(format!("Invalid Uri format in string [{}]: {}", url_str, err.to_string()).as_str()));
+                            return Err(err);
                         },
                     }
                 }
@@ -176,6 +193,18 @@ impl Scanner {
                     self.push_token(Token::Variable(id));
                 } else {
                     return Err(ScannerError::new("Valid identifier expected after variable marker '$'"));
+                }
+            } else if c == ':' {
+                self.pop();
+                if let Some(&next) = self.peek_next() {
+                    if next == ':' {
+                        self.pop();
+                        self.push_token(Token::CommandSpecifier);
+                    } else {
+                        return Err(ScannerError::new("Invalid character [:]"));
+                    }
+                } else {
+                    return Err(ScannerError::new("Invalid character [:]"));
                 }
             } else {
                 return Err(ScannerError::new(format!("Invalid character [{}]", c).as_str()));
@@ -224,6 +253,7 @@ impl Scanner {
             } else {
                 return None;
             }
+            count_down = count_down - 1;
         }
         Some(buf)
     }
@@ -365,15 +395,16 @@ impl Scanner {
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Token {
+    String(ValueString),
+    Boolean(ValueBoolean),
+    Integral(ValueIntegral),
+    Fractional(ValueFractional),
+    Time(ValueTime),
+    Url(ValueUrl),
     EndOfStatement,
     LeftParens,
     RightParens,
-    String(String),
-    Integral(BigInt),
-    Fractional(BigDecimal),
-    Boolean(bool),
     Identifier(String),
-    Uri(Url),
     Equals,
     NotEquals,
     GreaterThan,
@@ -395,6 +426,140 @@ pub enum Token {
     Variable(String),
     MarkedArg(String),
 }
+
+impl Token {
+    pub fn new_string(str_val : String) -> Token {
+        Token::String(ValueString { val: str_val } )
+    }
+
+    pub fn new_integral(str_val : String) -> Result<Token, ParseBigIntError>  {
+        match BigInt::from_str(str_val.as_str()) {
+            Ok(big_int) => {
+                Ok(Token::Integral(ValueIntegral { val : big_int }))
+            }
+            Err(err) => {
+                Err(err)
+            }
+        }
+    }
+
+    pub fn new_fractional(str_val : String) -> Result<Token, ParseBigDecimalError> {
+        match BigDecimal::from_str(str_val.as_str()) {
+            Ok(big_dec) => {
+                Ok(Token::Fractional(ValueFractional { val : big_dec } ))
+            }
+            Err(err) => {
+                Err(err)
+            }
+        }
+    }
+
+    pub fn new_boolean(b : bool) -> Token {
+        Token::Boolean(ValueBoolean { val : b } )
+    }
+
+    pub fn new_url(uri_str : String) -> Result<Token, ScannerError> {
+        match Url::parse(uri_str.as_str()) {
+            Ok(url) => {
+                Ok(Token::Url(ValueUrl { val : url }))
+            }
+            Err(err) => {
+                Err(ScannerError::new(err.to_string().as_str()))
+            }
+        }
+    }
+
+    pub(crate) fn get_string_rep(&self) -> String {
+        match self {
+            Token::String(val) => { val.to_string() }
+            Token::Integral(val) => { val.to_string()}
+            Token::Fractional(val) => { val.to_string()}
+            Token::Boolean(val) => { val.to_string()}
+            Token::Url(val) => {val.to_string()}
+            Token::Time(val ) => { val.to_string()}
+            Token::EndOfStatement => { String::from(";") }
+            Token::LeftParens => { String::from("(")}
+            Token::RightParens => { String::from(")")}
+            Token::Identifier(val) => { format!("Identifier ({})", val.as_str()) }
+            Token::Equals => { String::from("==") }
+            Token::NotEquals => { String::from("!=") }
+            Token::GreaterThan => { String::from(">")}
+            Token::LessThan => { String::from("<")}
+            Token::GreaterThanEquals => { String::from(">=")}
+            Token::LessThanEquals => { String::from("<=")}
+            Token::Plus => { String::from("+")}
+            Token::Minus => { String::from("-")}
+            Token::Multiply => { String::from("*")}
+            Token::Divide => {String::from("/")}
+            Token::Pipe => {String::from("|")}
+            Token::PullPipe => {String::from("|>")}
+            Token::PushPipe => { String::from("<|")}
+            Token::StreamPipe => {String::from("<|>")}
+            Token::LeftSetter => {String::from("<-")}
+            Token::RightSetter => { String::from("->")}
+            Token::CommandSpecifier => {String::from("::")}
+            Token::CommandEval(val) => {format!("!{}", val.as_str())}
+            Token::Variable(val) => {format!("${}", val.as_str()) }
+            Token::MarkedArg(val) => {format!("--{}", val.as_str())}
+        }
+    }
+}
+
+impl Display for Token {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.get_string_rep().as_str())
+    }
+}
+
+#[derive(Eq, PartialEq)]
+pub enum TokenType {
+    Value,
+    Identifer,
+    Pipe,
+    UnaryOp,
+    BinaryOp,
+    BooleanOp,
+    Other,
+}
+
+trait EnumTypedVariant<A>
+    where A : PartialEq + Eq {
+    fn get_type(&self) -> Vec<A>;
+    fn has_type(&self, t : &A) -> bool {
+        self.get_type().contains(t)
+    }
+}
+
+impl EnumTypedVariant<TokenType> for Token {
+    fn get_type(&self) -> Vec<TokenType> {
+        match self {
+            Token::String(_) => { vec![TokenType::Value]}
+            Token::Integral(_) => { vec![TokenType::Value]}
+            Token::Fractional(_) => { vec![TokenType::Value]}
+            Token::Boolean(_) => { vec![TokenType::Value]}
+            Token::Url(_) => { vec![TokenType::Value]}
+            Token::Time(_) => { vec![TokenType::Value]}
+            Token::Identifier(_) => { vec![TokenType::Identifer]}
+            Token::Equals => {vec![TokenType::BooleanOp]}
+            Token::NotEquals => {vec![TokenType::BooleanOp]}
+            Token::GreaterThan => {vec![TokenType::BooleanOp]}
+            Token::LessThan => {vec![TokenType::BooleanOp]}
+            Token::GreaterThanEquals => {vec![TokenType::BooleanOp]}
+            Token::LessThanEquals => {vec![TokenType::BooleanOp]}
+            Token::Plus => {vec![TokenType::BinaryOp]}
+            Token::Minus => {vec![TokenType::BinaryOp, TokenType::UnaryOp]}
+            Token::Multiply => {vec![TokenType::BinaryOp]}
+            Token::Divide => {vec![TokenType::BinaryOp]}
+            Token::Pipe => {vec![TokenType::Pipe]}
+            Token::PullPipe => {vec![TokenType::Pipe]}
+            Token::PushPipe => {vec![TokenType::Pipe]}
+            Token::StreamPipe => {vec![TokenType::Pipe]}
+            _ => vec![TokenType::Other]
+        }
+    }
+}
+
+
 
 #[derive(Debug)]
 pub struct ScannerError {
@@ -423,6 +588,7 @@ mod tests {
     use bigdecimal::{BigDecimal, FromPrimitive};
     use num_bigint::BigInt;
     use reqwest::Url;
+
     use crate::Scanner;
     use crate::scanner::{ScannerError, Token};
 
@@ -452,28 +618,28 @@ mod tests {
         check_scan(
             "1+2 * (3 - 4) / 5",
             vec![
-                Token::Integral(BigInt::from(1)),
+                Token::new_integral(String::from("1"))?,
                 Token::Plus,
-                Token::Integral(BigInt::from(2)),
+                Token::new_integral(String::from("2"))?,
                 Token::Multiply,
                 Token::LeftParens,
-                Token::Integral(BigInt::from(3)),
+                Token::new_integral(String::from("3"))?,
                 Token::Minus,
-                Token::Integral(BigInt::from(4)),
+                Token::new_integral(String::from("4"))?,
                 Token::RightParens,
                 Token::Divide,
-                Token::Integral(BigInt::from(5)),
+                Token::new_integral(String::from("5"))?,
             ]
         );
     }
 
     #[test]
     fn test_numbers() {
-        check_scan("3.14159", vec![Token::Fractional(BigDecimal::from_f32(3.14159f32).unwrap())]);
-        check_scan(".14159", vec![Token::Fractional(BigDecimal::from_f32(0.14159f32).unwrap())]);
-        check_scan("100.123456", vec![Token::Fractional(BigDecimal::from_f64(100.123456f64).unwrap())]);
-        check_scan("1", vec![Token::Integral(BigInt::from(1))]);
-        check_scan("101010", vec![Token::Integral(BigInt::from(101010))]);
+        check_scan("3.14159", vec![Token::new_fractional(String::from("3.14159"))?]);
+        check_scan(".14159", vec![Token::new_fractional(String::from(".14159"))?]);
+        check_scan("100.123456", vec![Token::new_fractional(String::from("100.123456"))?]);
+        check_scan("1", vec![Token::new_integral(String::from("1"))?]);
+        check_scan("101010", vec![Token::new_integral(String::from("101010"))?]);
     }
 
     #[test]
@@ -499,9 +665,9 @@ mod tests {
 
     #[test]
     fn test_strings() {
-        check_scan (" \"string\"", vec![Token::String(String::from("string"))]);
+        check_scan (" \"string\"", vec![Token::new_string(String::from("string"))]);
         check_scan("identifier --- this is a string", vec![
-            Token::Identifier(String::from("identifier")), Token::String(String::from(" this is a string"))]);
+            Token::Identifier(String::from("identifier")), Token::new_string(String::from(" this is a string"))]);
     }
 
     #[test]
@@ -515,11 +681,11 @@ mod tests {
     #[test]
     fn test_vars() {
         check_scan("1 + $my_var == 2", vec![
-            Token::Integral(BigInt::from(1)),
+            Token::new_integral( String::from("1"))?,
             Token::Plus,
             Token::Variable(String::from("my_var")),
             Token::Equals,
-            Token::Integral(BigInt::from(2)),
+            Token::new_integral(String::from("2"))?,
         ])
     }
 
