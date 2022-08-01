@@ -14,7 +14,7 @@ mod shell;
 struct App { }
 
 impl ShellApplicationEnvironment for App {
-    fn handle(&mut self, inp: &str) -> ShellCommand {
+    fn handle_input(&mut self, inp: &str) -> ShellCommand {
         match Scanner::scan(inp) {
             Ok(tkns) => {
                 match Parser::parse(tkns) {
@@ -32,8 +32,8 @@ impl ShellApplicationEnvironment for App {
         }
     }
 
-    fn supply(&self) -> String {
-        String::from("prompt")
+    fn supply_prompt(&self) -> String {
+        String::from(" > ")
     }
 }
 
