@@ -196,7 +196,7 @@ impl Scanner {
                 }
             } else if c == ':' {
                 self.pop();
-                if let Some(&next) = self.peek_next() {
+                if let Some(&next) = self.peek() {
                     if next == ':' {
                         self.pop();
                         self.push_token(Token::CommandSpecifier);
@@ -312,7 +312,6 @@ impl Scanner {
                 }
             } else {
                 no_match = !allow_eof;
-                println!("read_until: stopping with [{}] and no_match [{}]", buf, no_match);
                 do_stop = true;
             }
 
@@ -393,7 +392,7 @@ impl Scanner {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum Token {
     String(ValueString),
     Boolean(ValueBoolean),
@@ -514,6 +513,7 @@ impl Display for Token {
 #[derive(Eq, PartialEq)]
 pub enum TokenType {
     Value,
+    Variable,
     Identifer,
     Pipe,
     UnaryOp,
@@ -522,7 +522,7 @@ pub enum TokenType {
     Other,
 }
 
-trait EnumTypedVariant<A>
+pub trait EnumTypedVariant<A>
     where A : PartialEq + Eq {
     fn get_type(&self) -> Vec<A>;
     fn has_type(&self, t : &A) -> bool {
@@ -540,6 +540,7 @@ impl EnumTypedVariant<TokenType> for Token {
             Token::Url(_) => { vec![TokenType::Value]}
             Token::Time(_) => { vec![TokenType::Value]}
             Token::Identifier(_) => { vec![TokenType::Identifer]}
+            Token::Variable(_) => { vec![TokenType::Variable]}
             Token::Equals => {vec![TokenType::BooleanOp]}
             Token::NotEquals => {vec![TokenType::BooleanOp]}
             Token::GreaterThan => {vec![TokenType::BooleanOp]}

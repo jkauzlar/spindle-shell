@@ -179,10 +179,14 @@ impl Shell {
                 let command = self.app_env.handle_input(line_editor.text().as_str());
                 match command {
                     ShellCommand::OUT(res_str) => {
+                        stdout.queue(Print("\n"));
                         stdout.queue(style::PrintStyledContent(res_str.white()));
+                        stdout.queue(Print("\n"));
                     }
                     ShellCommand::ERR(err_str) => {
+                        stdout.queue(Print("\n"));
                         stdout.queue(style::PrintStyledContent(err_str.dark_red()));
+                        stdout.queue(Print("\n"));
                     }
                     ShellCommand::QUIT => {
                         break;

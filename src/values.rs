@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter, Write};
 use bigdecimal::BigDecimal;
 use num_bigint::BigInt;
 use reqwest::Url;
@@ -9,32 +9,39 @@ pub trait Value : Debug {
     fn to_string(&self) -> String;
 }
 
-#[derive(Eq, PartialEq, Debug)]
+impl Display for dyn Value {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.to_string().as_str())
+    }
+}
+
+
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub struct ValueString {
     pub val : String,
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub struct ValueIntegral {
     pub val : BigInt,
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub struct ValueFractional {
     pub val : BigDecimal,
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub struct ValueBoolean {
     pub val : bool,
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub struct ValueTime {
     pub val : u64,
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub struct ValueUrl {
     pub val : Url
 }
