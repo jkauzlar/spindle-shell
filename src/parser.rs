@@ -1,9 +1,9 @@
 use std::error::Error;
-use std::fmt::{Display, Formatter, Write};
-use crate::parser::Expr::{FnCall, Pipeline, Setter};
+use std::fmt::{Display, Formatter};
+use crate::parser::Expr::{Pipeline, Setter};
 use crate::scanner::{EnumTypedVariant, Token, TokenType};
 use crate::values;
-use crate::values::{Value, ValueIntegral};
+use crate::values::{Value};
 
 /// ```
 // INPUT       := (identifier '::')? EXECUTABLE
@@ -181,93 +181,79 @@ impl Parser {
     }
 
     fn parse_equality(&mut self) -> Result<Expr, ParserError> {
-        if let left_expr = self.parse_comparison()? {
-            if let Some(tkn) = self.peek() {
-                if tkn == &Token::Equals || tkn == &Token::NotEquals {
-                    let local_tkn = tkn.clone();
-                    self.pop();
-                    if let right_expr = self.parse_comparison()? {
-                        return Ok(Expr::Binary(
-                            local_tkn,
-                            Box::new(left_expr),
-                            Box::new(right_expr)));
-                    } else {
-                        return Err(self.unexpected_token_error("parse_equality"));
-                    }
-                } else {
-                    return Ok(left_expr);
-                }
+        let left_expr = self.parse_comparison()?;
+        if let Some(tkn) = self.peek() {
+            if tkn == &Token::Equals || tkn == &Token::NotEquals {
+                let local_tkn = tkn.clone();
+                self.pop();
+                let right_expr = self.parse_comparison()?;
+                Ok(Expr::Binary(
+                    local_tkn,
+                    Box::new(left_expr),
+                    Box::new(right_expr)))
             } else {
-                return Ok(left_expr);
+                Ok(left_expr)
             }
+        } else {
+            Ok(left_expr)
         }
-        Err(ParserError::new("todo error message: parse_equality"))
     }
 
     fn parse_comparison(&mut self) -> Result<Expr, ParserError> {
-        if let left_expr = self.parse_sum()? {
-            if let Some(tkn) = self.peek() {
-                if tkn.has_type(&TokenType::BooleanOp) {
-                    let local_tkn = tkn.clone();
-                    self.pop();
-                    if let right_expr = self.parse_sum()? {
-                        return Ok(Expr::Binary(
-                            local_tkn,
-                            Box::new(left_expr),
-                            Box::new(right_expr)));
-                    }
-                } else {
-                    return Ok(left_expr);
-                }
+        let left_expr = self.parse_sum()?;
+        if let Some(tkn) = self.peek() {
+            if tkn.has_type(&TokenType::BooleanOp) {
+                let local_tkn = tkn.clone();
+                self.pop();
+                let right_expr = self.parse_sum()?;
+                Ok(Expr::Binary(
+                    local_tkn,
+                    Box::new(left_expr),
+                    Box::new(right_expr)))
             } else {
-                return Ok(left_expr);
+                Ok(left_expr)
             }
+        } else {
+            Ok(left_expr)
         }
-        Err(ParserError::new("todo error message: parse_comparison"))
     }
 
     fn parse_sum(&mut self) -> Result<Expr, ParserError> {
-        if let left_expr = self.parse_product()? {
-            if let Some(tkn) = self.peek() {
-                if tkn == &Token::Plus || tkn == &Token::Minus {
-                    let local_tkn = tkn.clone();
-                    self.pop();
-                    if let right_expr = self.parse_sum()? {
-                        return Ok(Expr::Binary(
-                            local_tkn,
-                            Box::new(left_expr),
-                            Box::new(right_expr)));
-                    }
-                } else {
-                    return Ok(left_expr);
-                }
+        let left_expr = self.parse_product()?;
+        if let Some(tkn) = self.peek() {
+            if tkn == &Token::Plus || tkn == &Token::Minus {
+                let local_tkn = tkn.clone();
+                self.pop();
+                let right_expr = self.parse_sum()?;
+                Ok(Expr::Binary(
+                    local_tkn,
+                    Box::new(left_expr),
+                    Box::new(right_expr)))
             } else {
-                return Ok(left_expr);
+                Ok(left_expr)
             }
+        } else {
+            Ok(left_expr)
         }
-        Err(ParserError::new("todo error message: parse_sum"))
     }
 
     fn parse_product(&mut self) -> Result<Expr, ParserError> {
-        if let left_expr = self.parse_unary()? {
-            if let Some(tkn) = self.peek() {
-                if tkn == &Token::Multiply || tkn == &Token::Divide {
-                    let local_tkn = tkn.clone();
-                    self.pop();
-                    if let right_expr = self.parse_product()? {
-                        return Ok(Expr::Binary(
-                            local_tkn,
-                            Box::new(left_expr),
-                            Box::new(right_expr)));
-                    }
-                } else {
-                    return Ok(left_expr);
-                }
+        let left_expr = self.parse_unary()?;
+        if let Some(tkn) = self.peek() {
+            if tkn == &Token::Multiply || tkn == &Token::Divide {
+                let local_tkn = tkn.clone();
+                self.pop();
+                let right_expr = self.parse_product()?;
+                Ok(Expr::Binary(
+                    local_tkn,
+                    Box::new(left_expr),
+                    Box::new(right_expr)))
             } else {
-                return Ok(left_expr);
+                Ok(left_expr)
             }
+        } else {
+            Ok(left_expr)
         }
-        Err(ParserError::new("todo error message: parse_product"))
     }
 
     fn parse_unary(&mut self) -> Result<Expr, ParserError> {
@@ -420,8 +406,8 @@ impl Parser {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Command {
-    id : Option<String>,
-    exprs : Vec<Expr>,
+    pub id : Option<String>,
+    pub exprs : Vec<Expr>,
 }
 
 impl Display for Command {
@@ -445,11 +431,11 @@ pub enum Expr {
     Binary(Token, Box<Expr>, Box<Expr>),
     Unary(Token, Box<Expr>),
     VariableIdentifier(String),
-    ValueIntegral(values::ValueIntegral),
-    ValueFractional(values::ValueFractional),
-    ValueString(values::ValueString),
-    ValueBoolean(values::ValueBoolean),
-    ValueUrl(values::ValueUrl),
+    ValueIntegral(Value),
+    ValueFractional(Value),
+    ValueString(Value),
+    ValueBoolean(Value),
+    ValueUrl(Value),
 }
 
 impl Display for Expr {
@@ -481,19 +467,19 @@ impl Display for Expr {
                 f.write_str(format!("${}", id).as_str())
             }
             Expr::ValueIntegral(v) => {
-                f.write_str(format!("{}", v.to_string()).as_str())
+                f.write_str(v.to_string().as_str())
             }
             Expr::ValueString(v) => {
-                f.write_str(format!("\"{}\"", v.to_string()).as_str())
+                f.write_str(v.to_string().as_str())
             }
             Expr::ValueFractional(v) => {
-                f.write_str(format!("{}", v.to_string()).as_str())
+                f.write_str(v.to_string().as_str())
             }
             Expr::ValueBoolean(v) => {
-                f.write_str(format!("{}", v.to_string()).as_str())
+                f.write_str(v.to_string().as_str())
             }
             Expr::ValueUrl(v) => {
-                f.write_str(format!("@{}", v.to_string()).as_str())
+                f.write_str(v.to_string().as_str())
             }
         }
     }
@@ -514,8 +500,7 @@ impl ParserError {
 
 impl Display for ParserError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.message.as_str());
-        Result::Ok(())
+        f.write_str(self.message.as_str())
     }
 }
 

@@ -1,102 +1,158 @@
+use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Write};
-use bigdecimal::BigDecimal;
-use num_bigint::BigInt;
+use std::str::{FromStr, ParseBoolError};
+use std::string::ParseError;
+use bigdecimal::{BigDecimal, ParseBigDecimalError};
+use num_bigint::{BigInt, ParseBigIntError};
 use reqwest::Url;
+use crate::analyzer::TypeError;
+use crate::ParserError;
+use crate::scanner::EnumTypedVariant;
 use crate::types::Type;
 
-pub trait Value : Debug {
-    fn get_type(&self) -> Type;
-    fn to_string(&self) -> String;
+#[derive(Debug,Clone, Eq, PartialEq)]
+pub enum Value {
+
+    ValueString {
+        val : String,
+    },
+
+    ValueIntegral {
+        val : BigInt,
+    },
+
+    ValueFractional {
+        val : BigDecimal,
+    },
+
+    ValueBoolean {
+        val : bool,
+    },
+
+    ValueTime {
+        val : u64,
+    },
+
+    ValueUrl {
+        val : Url
+    },
 }
 
-impl Display for dyn Value {
+
+impl Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.to_string().as_str())
     }
 }
 
-
-#[derive(Eq, PartialEq, Debug, Clone)]
-pub struct ValueString {
-    pub val : String,
-}
-
-#[derive(Eq, PartialEq, Debug, Clone)]
-pub struct ValueIntegral {
-    pub val : BigInt,
-}
-
-#[derive(Eq, PartialEq, Debug, Clone)]
-pub struct ValueFractional {
-    pub val : BigDecimal,
-}
-
-#[derive(Eq, PartialEq, Debug, Clone)]
-pub struct ValueBoolean {
-    pub val : bool,
-}
-
-#[derive(Eq, PartialEq, Debug, Clone)]
-pub struct ValueTime {
-    pub val : u64,
-}
-
-#[derive(Eq, PartialEq, Debug, Clone)]
-pub struct ValueUrl {
-    pub val : Url
-}
-
-impl Value for ValueString {
-    fn get_type(&self) -> Type {
-        Type::String
+impl Value {
+    pub fn get_type(&self) -> Type {
+        match self {
+            Value::ValueString { .. } => Type::String,
+            Value::ValueIntegral { .. } => Type::Integral,
+            Value::ValueFractional { .. } => Type::Fractional,
+            Value::ValueBoolean { .. } => Type::Boolean,
+            Value::ValueTime { .. } => Type::Time,
+            Value::ValueUrl { .. } => Type::URL,
+        }
     }
 
-    fn to_string(&self) -> String {
-        self.val.to_string()
-    }
-}
-impl Value for ValueIntegral {
-    fn get_type(&self) -> Type {
-        Type::Integral
-    }
-
-    fn to_string(&self) -> String {
-        self.val.to_string()
-    }
-}
-impl Value for ValueFractional {
-    fn get_type(&self) -> Type {
-        Type::Fractional
+    pub fn to_string(&self) -> String {
+        match self {
+            Value::ValueString { val } => format!("\"{}\"", val),
+            Value::ValueIntegral { val } => format!("{}", val),
+            Value::ValueFractional { val } => format!("{}", val),
+            Value::ValueBoolean { val } => format!("{}", val),
+            Value::ValueTime { val } => format!("{}", val),
+            Value::ValueUrl { val } => format!("@{}", val),
+        }
     }
 
-    fn to_string(&self) -> String {
-        self.val.to_string()
-    }
-}
-impl Value for ValueBoolean {
-    fn get_type(&self) -> Type {
-        Type::Boolean
-    }
+    pub fn from_string(val_type : &str, val_str : &str) -> Result<Value, TypeSerializationError> {
+        match Type::from_str(val_type) {
+            Ok(t) => {
+                match  t {
+                    Type::String => {
+                        Ok(Value::ValueString {
+                            val: String::from(val_str)
+                        })
+                    }
+                    Type::Integral => {
+                        match BigInt::from_str(val_str) {
+                            Ok(val) => {
+                                Ok(Value::ValueIntegral { val })
+                            }
+                            Err(err) => {
+                                Err(TypeSerializationError::new(err.to_string().as_str()))
+                            }
+                        }
+                    }
+                    Type::Fractional => {
+                        match BigDecimal::from_str(val_str) {
+                            Ok(val) => {
+                                Ok(Value::ValueFractional { val })
+                            }
+                            Err(err) => {
+                                Err(TypeSerializationError::new(err.to_string().as_str()))
+                            }
+                        }
+                    }
+                    Type::Boolean => {
+                        let mut val = true;
+                        if val_str.eq("true") {
+                            val = true;
+                        } else if val_str.eq("false") {
+                            val = false;
+                        } else {
+                            return Err(TypeSerializationError::new(
+                                format!("Invalid boolean string [{}]", val_str).as_str()))
+                        }
 
-    fn to_string(&self) -> String {
-        self.val.to_string()
+                        Ok(Value::ValueBoolean { val })
+                    }
+                    Type::Time => {
+                        Ok(Value::ValueTime {
+                            val: 0
+                        })
+                    }
+                    Type::URL => {
+                        match Url::parse(val_str) {
+                            Ok(val) => {
+                                Ok(Value::ValueUrl { val })
+                            }
+                            Err(err) => {
+                                Err(TypeSerializationError::new(err.to_string().as_str()))
+                            }
+                        }
+                    }
+                    _ => Err(TypeSerializationError::new(
+                        format!("Invalid type string [{}] with value [{}]", val_type, val_str).as_str())),
+                }
+            }
+            Err(err) => {
+                Err(TypeSerializationError::new(err.to_string().as_str()))
+            }
+        }
     }
 }
-impl Value for ValueTime {
-    fn get_type(&self) -> Type {
-        Type::Time
-    }
 
-    fn to_string(&self) -> String {
-        self.val.to_string()
-    }
+#[derive(Debug)]
+pub struct TypeSerializationError {
+    pub message : String
 }
-impl Value for ValueUrl {
-    fn get_type(&self) -> Type {
-        Type::URI
-    }
 
-    fn to_string(&self) -> String {
-        self.val.to_string()
+impl TypeSerializationError {
+    pub fn new(message : &str) -> TypeSerializationError {
+        TypeSerializationError {
+            message : String::from(message)
+        }
     }
 }
+
+impl Display for TypeSerializationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.message.as_str())
+    }
+}
+
+impl Error for TypeSerializationError { }

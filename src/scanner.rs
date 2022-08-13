@@ -6,7 +6,7 @@ use bigdecimal::{BigDecimal, ParseBigDecimalError};
 use num_bigint::{BigInt, ParseBigIntError};
 use reqwest::Url;
 
-use crate::values::{Value, ValueBoolean, ValueFractional, ValueIntegral, ValueString, ValueTime, ValueUrl};
+use crate::values::{Value};
 
 pub struct Scanner {
     chars: Vec<char>,
@@ -394,12 +394,12 @@ impl Scanner {
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum Token {
-    String(ValueString),
-    Boolean(ValueBoolean),
-    Integral(ValueIntegral),
-    Fractional(ValueFractional),
-    Time(ValueTime),
-    Url(ValueUrl),
+    String(Value),
+    Boolean(Value),
+    Integral(Value),
+    Fractional(Value),
+    Time(Value),
+    Url(Value),
     EndOfStatement,
     LeftParens,
     RightParens,
@@ -428,13 +428,13 @@ pub enum Token {
 
 impl Token {
     pub fn new_string(str_val : String) -> Token {
-        Token::String(ValueString { val: str_val } )
+        Token::String(Value::ValueString { val: str_val } )
     }
 
     pub fn new_integral(str_val : String) -> Result<Token, ParseBigIntError>  {
         match BigInt::from_str(str_val.as_str()) {
             Ok(big_int) => {
-                Ok(Token::Integral(ValueIntegral { val : big_int }))
+                Ok(Token::Integral(Value::ValueIntegral { val : big_int }))
             }
             Err(err) => {
                 Err(err)
@@ -445,7 +445,7 @@ impl Token {
     pub fn new_fractional(str_val : String) -> Result<Token, ParseBigDecimalError> {
         match BigDecimal::from_str(str_val.as_str()) {
             Ok(big_dec) => {
-                Ok(Token::Fractional(ValueFractional { val : big_dec } ))
+                Ok(Token::Fractional(Value::ValueFractional { val : big_dec } ))
             }
             Err(err) => {
                 Err(err)
@@ -454,13 +454,13 @@ impl Token {
     }
 
     pub fn new_boolean(b : bool) -> Token {
-        Token::Boolean(ValueBoolean { val : b } )
+        Token::Boolean(Value::ValueBoolean { val : b } )
     }
 
     pub fn new_url(uri_str : String) -> Result<Token, ScannerError> {
         match Url::parse(uri_str.as_str()) {
             Ok(url) => {
-                Ok(Token::Url(ValueUrl { val : url }))
+                Ok(Token::Url(Value::ValueUrl { val : url }))
             }
             Err(err) => {
                 Err(ScannerError::new(err.to_string().as_str()))
@@ -587,11 +587,12 @@ impl Error for ScannerError { }
 #[cfg(test)]
 mod tests {
     use bigdecimal::{BigDecimal, FromPrimitive};
-    use num_bigint::BigInt;
+    use num_bigint::{BigInt, ParseBigIntError};
     use reqwest::Url;
 
     use crate::Scanner;
     use crate::scanner::{ScannerError, Token};
+    use crate::values::Value;
 
     fn assert_vec_items(tkns : &Vec<Token>, expected_tokens : Vec<Token>) {
         let mut idx = 0;
@@ -619,28 +620,28 @@ mod tests {
         check_scan(
             "1+2 * (3 - 4) / 5",
             vec![
-                Token::new_integral(String::from("1"))?,
+                Token::new_integral(String::from("1")).unwrap(),
                 Token::Plus,
-                Token::new_integral(String::from("2"))?,
+                Token::new_integral(String::from("2")).unwrap(),
                 Token::Multiply,
                 Token::LeftParens,
-                Token::new_integral(String::from("3"))?,
+                Token::new_integral(String::from("3")).unwrap(),
                 Token::Minus,
-                Token::new_integral(String::from("4"))?,
+                Token::new_integral(String::from("4")).unwrap(),
                 Token::RightParens,
                 Token::Divide,
-                Token::new_integral(String::from("5"))?,
+                Token::new_integral(String::from("5")).unwrap(),
             ]
         );
     }
 
     #[test]
     fn test_numbers() {
-        check_scan("3.14159", vec![Token::new_fractional(String::from("3.14159"))?]);
-        check_scan(".14159", vec![Token::new_fractional(String::from(".14159"))?]);
-        check_scan("100.123456", vec![Token::new_fractional(String::from("100.123456"))?]);
-        check_scan("1", vec![Token::new_integral(String::from("1"))?]);
-        check_scan("101010", vec![Token::new_integral(String::from("101010"))?]);
+        check_scan("3.14159", vec![Token::new_fractional(String::from("3.14159")).unwrap()]);
+        check_scan(".14159", vec![Token::new_fractional(String::from(".14159")).unwrap()]);
+        check_scan("100.123456", vec![Token::new_fractional(String::from("100.123456")).unwrap()]);
+        check_scan("1", vec![Token::new_integral(String::from("1")).unwrap()]);
+        check_scan("101010", vec![Token::new_integral(String::from("101010")).unwrap()]);
     }
 
     #[test]
@@ -675,18 +676,18 @@ mod tests {
     fn test_uris() {
         check_scan("@https://www.google.com something_else",
                    vec![
-                       Token::Uri(Url::parse("https://www.google.com").unwrap()),
+                       Token::Url(Value::ValueUrl { val : Url::parse("https://www.google.com").unwrap() } ),
                        Token::Identifier(String::from("something_else"))])
     }
 
     #[test]
     fn test_vars() {
         check_scan("1 + $my_var == 2", vec![
-            Token::new_integral( String::from("1"))?,
+            Token::new_integral( String::from("1")).unwrap(),
             Token::Plus,
             Token::Variable(String::from("my_var")),
             Token::Equals,
-            Token::new_integral(String::from("2"))?,
+            Token::new_integral(String::from("2")).unwrap(),
         ])
     }
 
