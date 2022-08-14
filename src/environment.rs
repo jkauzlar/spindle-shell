@@ -1,9 +1,8 @@
 use std::collections::HashMap;
-use std::str::FromStr;
-use crate::analyzer::{Sem, TypeError};
+use crate::analyzer::{Sem};
 use crate::types::{Function, Type};
 use crate::value_store::ValueStore;
-use crate::values::{TypeSerializationError, Value};
+use crate::values::{Value};
 
 pub struct Environment {
     value_store : Box<dyn ValueStore>,
@@ -100,6 +99,7 @@ fn func_matches(func: &Function, arg_types: &Vec<Type>) -> bool {
         if !fn_arg.eq(arg_types.get(idx).unwrap()) {
             return false;
         }
+        idx = idx + 1;
     }
 
     true

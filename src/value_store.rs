@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use crate::values::Value;
 
 pub trait ValueStore {
     fn resolve(&self, name: &str) -> Option<&(String, String)>;

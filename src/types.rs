@@ -1,5 +1,4 @@
 use std::fmt::{Display, Formatter};
-use std::process::Output;
 use std::str::FromStr;
 use crate::analyzer::TypeError;
 

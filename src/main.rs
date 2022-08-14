@@ -2,7 +2,7 @@ use crate::analyzer::{SemanticAnalyzer};
 use crate::environment::Environment;
 use crate::functions::get_builtins;
 
-use crate::parser::{Parser, ParserError};
+use crate::parser::{Parser};
 use crate::scanner::{Scanner};
 use crate::shell::{ Shell, ShellApplicationEnvironment, ShellCommand};
 use crate::value_store::InMemoryValueStore;
@@ -23,12 +23,21 @@ struct App {
 
 impl ShellApplicationEnvironment for App {
     fn handle_input(&mut self, inp: &str) -> ShellCommand {
+        let mut buf = String::new();
         match Scanner::scan(inp) {
             Ok(tkns) => {
+                buf.push_str("Scanner output: ");
+                for tkn in &tkns {
+                    buf.push_str(tkn.to_string().clone().as_str());
+                    buf.push_str(" ");
+                }
+                buf.push_str("\r\n");
                 match Parser::parse(tkns) {
                     Ok(cmd) => {
-                        let mut buf = String::new();
                         for expr in cmd.exprs {
+                            buf.push_str("Parser output: ");
+                            buf.push_str(expr.to_string().as_str());
+                            buf.push_str("\r\n");
                             match SemanticAnalyzer::analyze(&self.env, expr) {
                                 Ok(sem_expr) => {
                                     buf.push_str(sem_expr.to_string().as_str());

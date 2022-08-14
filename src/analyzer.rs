@@ -1,12 +1,8 @@
-use std::env::args;
-use std::fmt::{Display, Formatter, Pointer};
-use std::ops::Deref;
-use std::sync::Arc;
+use std::fmt::{Display, Formatter};
 use crate::environment::Environment;
-use crate::parser::{Command, Expr};
+use crate::parser::{Expr};
 use crate::scanner::{EnumTypedVariant, Token, TokenType};
 use crate::types::{Function, Type};
-use crate::values;
 use crate::values::{Value};
 
 pub struct SemanticAnalyzer<'a> {
@@ -16,13 +12,13 @@ pub struct SemanticAnalyzer<'a> {
 impl SemanticAnalyzer<'_> {
     pub fn analyze(env : &Box<Environment>, expr : Expr) -> Result<SemanticExpression, TypeError> {
         let mut semantic_analyzer = SemanticAnalyzer { env };
-        semantic_analyzer.create_sem_tree(Box::new(expr))
+        semantic_analyzer.create_sem_tree(Box::new(expr), None)
     }
 
-    fn create_sem_tree(&mut self, expr : Box<Expr>) -> Result<SemanticExpression, TypeError> {
+    fn create_sem_tree(&mut self, expr : Box<Expr>, carry_type : Option<Type>) -> Result<SemanticExpression, TypeError> {
         match *expr {
             Expr::Setter(id, expr) => {
-                match self.create_sem_tree(expr) {
+                match self.create_sem_tree(expr, carry_type) {
                     Ok(sem_expr) => {
                         Ok(SemanticExpression::Setter(
                             id,
@@ -34,21 +30,14 @@ impl SemanticAnalyzer<'_> {
                 }
             }
             Expr::Pipeline(left_expr, pipe, right_expr) => {
+                let left_sem = self.analyze_expr(&left_expr, carry_type)?;
                 let sem_pipe = SemanticAnalyzer::translate_pipe(pipe);
-                // TODO type check pipes
-                match self.create_sem_tree(right_expr) {
+                match self.create_sem_tree(right_expr, Some(left_sem.get_type())) {
                     Ok(right_sem) => {
-                        match self.analyze_expr(&left_expr) {
-                            Ok(sem) => {
-                                Ok(SemanticExpression::PipedCommand {
-                                    sem,
-                                    pipe: Some((sem_pipe, Box::new(right_sem))),
-                                })
-                            }
-                            Err(err) => {
-                                Err(err)
-                            }
-                        }
+                        Ok(SemanticExpression::PipedCommand {
+                            sem: left_sem,
+                            pipe: Some((sem_pipe, Box::new(right_sem))),
+                        })
                     }
                     Err(err) => {
                         Err(err)
@@ -56,7 +45,7 @@ impl SemanticAnalyzer<'_> {
                 }
             }
             _ => {
-                match self.analyze_expr(&expr) {
+                match self.analyze_expr(&expr, carry_type) {
                     Ok(sem) => {
                         Ok(SemanticExpression::PipedCommand {
                             sem,
@@ -71,14 +60,14 @@ impl SemanticAnalyzer<'_> {
         }
     }
 
-    fn analyze_expr(&mut self, expr : &Expr) -> Result<Sem, TypeError> {
+    fn analyze_expr(&mut self, expr : &Expr, carry_type : Option<Type>) -> Result<Sem, TypeError> {
         match expr {
             Expr::FnCall(fn_name, args) => {
                 let mut sem_args = vec![];
                 for arg in args {
-                    sem_args.push(self.analyze_expr(arg)?);
+                    sem_args.push(self.analyze_expr(arg, None)?);
                 }
-                match self.resolve_fn(fn_name, &sem_args) {
+                match self.resolve_fn(fn_name, &sem_args, carry_type) {
                     None => {
                         Err(TypeError::new("todo type error"))
                     }
@@ -88,8 +77,11 @@ impl SemanticAnalyzer<'_> {
                 }
             }
             Expr::Binary(op, left, right) => {
-                let left_arg = self.analyze_expr(left)?;
-                let right_arg = self.analyze_expr(right)?;
+                if let Some(_) = carry_type {
+                    return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
+                }
+                let left_arg = self.analyze_expr(left, None)?;
+                let right_arg = self.analyze_expr(right, None)?;
                 match self.resolve_binary_fn(op, &left_arg, &right_arg) {
                     None => {
                         Err(TypeError::new("todo type error"))
@@ -100,7 +92,10 @@ impl SemanticAnalyzer<'_> {
                 }
             }
             Expr::Unary(op, expr) => {
-                let arg = self.analyze_expr(expr)?;
+                if let Some(_) = carry_type {
+                    return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
+                }
+                let arg = self.analyze_expr(expr, None)?;
                 match self.resolve_unary_fn(op, &arg) {
                     None => {
                         Err(TypeError::new("todo type error"))
@@ -111,6 +106,9 @@ impl SemanticAnalyzer<'_> {
                 }
             }
             Expr::VariableIdentifier(id) => {
+                if let Some(_) = carry_type {
+                    return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
+                }
                 match self.resolve_var(id) {
                     None => {
                         Err(TypeError::new("todo type error"))
@@ -120,11 +118,36 @@ impl SemanticAnalyzer<'_> {
                     }
                 }
             }
-            Expr::ValueIntegral(v) => { Ok(Sem::ValueIntegral(v.clone())) }
-            Expr::ValueFractional(v) => { Ok(Sem::ValueFractional(v.clone())) }
-            Expr::ValueString(v) => { Ok(Sem::ValueString(v.clone())) }
-            Expr::ValueBoolean(v) => { Ok(Sem::ValueBoolean(v.clone())) }
-            Expr::ValueUrl(v) => { Ok(Sem::ValueUrl(v.clone())) }
+            Expr::ValueIntegral(v) => {
+                if let Some(_) = carry_type {
+                    return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
+                }
+                Ok(Sem::ValueIntegral(v.clone()))
+            }
+            Expr::ValueFractional(v) => {
+                if let Some(_) = carry_type {
+                    return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
+                }
+                Ok(Sem::ValueFractional(v.clone()))
+            }
+            Expr::ValueString(v) => {
+                if let Some(_) = carry_type {
+                    return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
+                }
+                Ok(Sem::ValueString(v.clone()))
+            }
+            Expr::ValueBoolean(v) => {
+                if let Some(_) = carry_type {
+                    return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
+                }
+                Ok(Sem::ValueBoolean(v.clone()))
+            }
+            Expr::ValueUrl(v) => {
+                if let Some(_) = carry_type {
+                    return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
+                }
+                Ok(Sem::ValueUrl(v.clone()))
+            }
             _ => {  Err(TypeError::new(""))}
         }
     }
@@ -139,10 +162,14 @@ impl SemanticAnalyzer<'_> {
         }
     }
 
-    fn resolve_fn(&self, fn_name: &String, args: &Vec<Sem>) -> Option<Function> {
+    fn resolve_fn(&self, fn_name: &String, args: &Vec<Sem>, carry_type : Option<Type>) -> Option<Function> {
+        let mut type_vec : Vec<Type> = args.iter().map(|sem| sem.get_type()).collect();
+        if let Some(t) = carry_type {
+            type_vec.push(t);
+        }
         self.env.find_function(
             fn_name,
-            args.iter().map(|sem| sem.get_type()).collect())
+            type_vec)
     }
 
     fn resolve_var(&self, var_name : &String) -> Option<Sem> {

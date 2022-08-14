@@ -2,7 +2,6 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use crate::parser::Expr::{Pipeline, Setter};
 use crate::scanner::{EnumTypedVariant, Token, TokenType};
-use crate::values;
 use crate::values::{Value};
 
 /// ```
@@ -48,8 +47,8 @@ impl Parser {
             }
             Some(id) => {
                 let local_id = id.clone();
-                self.pop(); // pop the identifier
-                if self.check_current(&Token::CommandSpecifier) {
+                if self.check_next(&Token::CommandSpecifier) {
+                    self.pop(); // pop the identifier
                     self.pop(); // pop the command specifier
                     if let Ok(exprs) = self.parse_executable() {
                         Ok(Command {
@@ -258,14 +257,20 @@ impl Parser {
 
     fn parse_unary(&mut self) -> Result<Expr, ParserError> {
         if let Some(tkn) = self.peek() {
-            if tkn.has_type(&TokenType::UnaryOp) {
+            return if tkn.has_type(&TokenType::UnaryOp) {
                 let local_tkn = tkn.clone();
                 self.pop();
-                if let expr = self.parse_fncall_inner()? {
-                    return Ok(Expr::Unary(local_tkn, Box::new(expr)));
+                let result = self.parse_fncall_inner();
+                match result {
+                    Ok(expr) => {
+                        Ok(Expr::Unary(local_tkn, Box::new(expr)))
+                    }
+                    Err(err) => {
+                        Err(err)
+                    }
                 }
             } else {
-                return self.parse_fncall_inner();
+                self.parse_fncall_inner()
             }
         }
         Err(ParserError::new("todo error message: parse_unary"))

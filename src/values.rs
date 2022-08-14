@@ -1,13 +1,9 @@
 use std::error::Error;
-use std::fmt::{Debug, Display, Formatter, Write};
-use std::str::{FromStr, ParseBoolError};
-use std::string::ParseError;
-use bigdecimal::{BigDecimal, ParseBigDecimalError};
-use num_bigint::{BigInt, ParseBigIntError};
+use std::fmt::{Debug, Display, Formatter};
+use std::str::{FromStr};
+use bigdecimal::{BigDecimal};
+use num_bigint::{BigInt};
 use reqwest::Url;
-use crate::analyzer::TypeError;
-use crate::ParserError;
-use crate::scanner::EnumTypedVariant;
 use crate::types::Type;
 
 #[derive(Debug,Clone, Eq, PartialEq)]

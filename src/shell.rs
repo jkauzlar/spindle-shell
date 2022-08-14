@@ -1,13 +1,13 @@
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::io;
-use std::io::{stdin, stdout, Stdout, Write};
+use std::io::{stdout, Stdout, Write};
 
 use crossterm::{
-    cursor, ExecutableCommand,
+    cursor,
     QueueableCommand, style::{self, Stylize}, terminal
 };
-use crossterm::cursor::{MoveLeft, MoveToColumn, MoveToNextLine};
+use crossterm::cursor::{MoveToColumn};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, read};
 use crossterm::style::{Print, PrintStyledContent};
 
