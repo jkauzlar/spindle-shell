@@ -175,7 +175,7 @@ impl Shell {
             stdout.queue(MoveToColumn(0));
             stdout.flush();
 
-            if !exit_shell {
+            if !exit_shell && line_editor.text().trim().len() > 0 {
                 let command = self.app_env.handle_input(line_editor.text().as_str());
                 match command {
                     ShellCommand::OUT(res_str) => {
