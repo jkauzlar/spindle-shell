@@ -21,14 +21,38 @@ mod analyzer;
 mod value_store;
 mod functions;
 mod evaluator;
+mod external_resources;
 
 struct App {
     env : Box<Environment>
 }
 
+impl App {
+    fn parse_user_command(inp : &str) -> Option<UserCommand> {
+        if inp.starts_with(":quit ") {
+            Some(UserCommand::QUIT)
+        } else {
+            None
+        }
+    }
+}
+
+enum UserCommand {
+    QUIT,
+}
+
 impl ShellApplicationEnvironment for App {
     fn handle_input(&mut self, inp: &str) -> ShellCommand {
         let mut buf = String::new();
+
+        if inp.starts_with(":") {
+            if let Some(userCommand)  = parse_user_command(inp) {
+                match userCommand {
+                    UserCommand::QUIT => return ShellCommand::QUIT
+                }
+            }
+        }
+
         match Scanner::scan(inp) {
             Ok(tkns) => {
                 // buf.push_str("Scanner output: ");

@@ -1,6 +1,8 @@
-use std::fmt::{Display, Formatter};
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter, Write};
 use std::str::FromStr;
 use crate::analyzer::TypeError;
+use crate::external_resources::{ExternalResource, ResourceType};
 
 use crate::values::Value;
 
@@ -12,7 +14,8 @@ pub enum Type {
     Boolean,
     Time,
     URL,
-    Generic(String)
+    Resource,
+    Generic(String),
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -37,7 +40,31 @@ pub struct Function {
     name : String,
     sig : Signature,
     f : fn(Vec<Value>) -> Box<Value>,
+    marked_args : HashMap<String,Type>,
+    resource_type : Option<ResourceType>,
 }
+
+pub struct FunctionCall {
+    func : Function,
+    args : Vec<Value>,
+    marked_args : HashMap<String, Value>,
+    resource : Option<ExternalResource>
+}
+
+impl FunctionCall {
+    pub fn set_marked_arg(&mut self, name : &str, v : Value) {
+        self.marked_args.insert(String::from(name), v);
+    }
+
+    pub fn set_resource(&mut self, res : ExternalResource) {
+        self.resource = Some(res);
+    }
+
+    pub fn run(&self) -> Value {
+        self.func.call(self.args.clone());
+    }
+}
+
 
 impl Function {
 
@@ -45,7 +72,18 @@ impl Function {
         Function {
             name: String::from(name),
             sig,
-            f
+            f,
+            marked_args: HashMap::new(),
+            resource_type: None,
+        }
+    }
+
+    pub fn create_call(&self, args : Vec<Value>) -> FunctionCall {
+        FunctionCall {
+            func: self.clone(),
+            args,
+            marked_args: Default::default(),
+            resource: None
         }
     }
 
@@ -63,6 +101,14 @@ impl Function {
 
     pub fn call(&self, args : Vec<Value>) -> Box<Value> {
         (self.f)(args)
+    }
+
+    pub fn set_marked_arg_type(&mut self, id : &str, t : Type) {
+        self.marked_args.insert(String::from(id), t);
+    }
+
+    pub fn set_resource_type(&mut self, rt : ResourceType) {
+        self.resource_type = Some(rt);
     }
 }
 
@@ -93,6 +139,9 @@ impl Display for Type {
             Type::URL => {
                 f.write_str("URL")
             }
+            Type::Resource => {
+                f.write_str("Resource")
+            }
             Type::Generic(t) => {
                 f.write_str(format!("[{}]", t).as_str())
             }
@@ -116,6 +165,8 @@ impl FromStr for Type {
             Ok(Type::Time)
         } else if s.eq("URL") {
             Ok(Type::URL)
+        } else if s.eq("Resource") {
+            Ok(Type::Resource)
         } else {
             Err(TypeError::new(format!("Unknown type [{}]", s).as_str()))
         }

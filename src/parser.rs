@@ -15,7 +15,7 @@ use crate::values::{Value};
 // SUM         := PRODUCT (('+' | '-') PRODUCT)*
 // PRODUCT     := UNARY (('\*' | '/') UNARY)*
 // UNARY       := ('-' FNCALLINNER) | FNCALLINNER
-// FNCALLINNER := identifier (VALUE)* | VALUE
+// FNCALL      := identifier (VALUE)* | VALUE
 // VALUE       := scalar | variable | '(' EXPR ')'````
 // ```
 
@@ -171,8 +171,8 @@ impl Parser {
     // COMPARISON  := SUM (BOOLEAN_OP SUM)?
     // SUM         := PRODUCT (('+' | '-') PRODUCT)*
     // PRODUCT     := UNARY (('\*' | '/') UNARY)*
-    // UNARY       := ('-' FNCALLINNER) | FNCALLINNER
-    // FNCALLINNER := identifier (VALUE)* | VALUE
+    // UNARY       := ('-' FNCALL) | FNCALL
+    // FNCALL      := identifier (VALUE)* | VALUE
     // VALUE       := scalar | variable | '(' EXPR ')'````
 
     fn parse_expr(&mut self) -> Result<Expr, ParserError> {
@@ -260,7 +260,7 @@ impl Parser {
             return if tkn.has_type(&TokenType::UnaryOp) {
                 let local_tkn = tkn.clone();
                 self.pop();
-                let result = self.parse_fncall_inner();
+                let result = self.parse_fncall();
                 match result {
                     Ok(expr) => {
                         Ok(Expr::Unary(local_tkn, Box::new(expr)))
@@ -270,13 +270,13 @@ impl Parser {
                     }
                 }
             } else {
-                self.parse_fncall_inner()
+                self.parse_fncall()
             }
         }
         Err(ParserError::new("todo error message: parse_unary"))
     }
 
-    fn parse_fncall_inner(&mut self) -> Result<Expr, ParserError> {
+    fn parse_fncall(&mut self) -> Result<Expr, ParserError> {
         if let Some(tkn) = self.peek() {
             let local_tkn = tkn.clone();
             return match local_tkn {
@@ -312,6 +312,18 @@ impl Parser {
                             expr_result
                         } else {
                             Err(self.unexpected_token_error("expected closing parenthesis"))
+                        }
+                    }
+                }
+            } else if local_tkn.has_type(&TokenType::ArgMarker) {
+                if let Token::MarkedArg(id) = self.pop() {
+                    let expr_result = self.parse_expr();
+                    match expr_result {
+                        Ok(unwrapped) => {
+                            Ok(Expr::NamedArg(id, Box::from(unwrapped)))
+                        }
+                        err @ Err(_) => {
+                            err
                         }
                     }
                 }
@@ -362,7 +374,7 @@ impl Parser {
             self.idx = self.idx + 1;
             return local_token;
         }
-        panic!("Always check if next exists before calling pop()!")
+        panic!("Always check if peek exists before calling pop()!")
     }
 
     fn check_current(&self, tkn : &Token) -> bool {
@@ -422,7 +434,7 @@ impl Display for Command {
             result_str.push_str(format!("{} :: ", id).as_str());
         }
         for expr in &self.exprs {
-            result_str.push_str(format!("{};\r\n", expr).as_str())
+            result_str.push_str(format!("{};", expr).as_str())
         }
         f.write_str(result_str.as_str())
     }
@@ -433,6 +445,7 @@ pub enum Expr {
     Setter(String, Box<Expr>),
     Pipeline(Box<Expr>, Token, Box<Expr>),
     FnCall(String, Vec<Expr>),
+    NamedArg(String, Box<Expr>),
     Binary(Token, Box<Expr>, Box<Expr>),
     Unary(Token, Box<Expr>),
     VariableIdentifier(String),
@@ -462,11 +475,14 @@ impl Display for Expr {
                 }
                 f.write_str(format!("{}:{}", fname, arg_str).as_str())
             }
+            Expr::NamedArg(id, expr) => {
+                f.write_str(format!("--{}({})", id, expr).as_str())
+            }
             Expr::Binary(op, left, right) => {
                 f.write_str(format!("({}) {} ({})", left, op, right).as_str())
             }
             Expr::Unary(op, expr) => {
-                f.write_str(format!("{} ({})", op, expr).as_str())
+                f.write_str(format!("{}({})", op, expr).as_str())
             }
             Expr::VariableIdentifier(id) => {
                 f.write_str(format!("${}", id).as_str())

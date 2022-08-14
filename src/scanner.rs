@@ -519,6 +519,7 @@ pub enum TokenType {
     UnaryOp,
     BinaryOp,
     BooleanOp,
+    ArgMarker,
     Other,
 }
 
@@ -555,6 +556,7 @@ impl EnumTypedVariant<TokenType> for Token {
             Token::PullPipe => {vec![TokenType::Pipe]}
             Token::PushPipe => {vec![TokenType::Pipe]}
             Token::StreamPipe => {vec![TokenType::Pipe]}
+            Token::MarkedArg(_) => { vec![TokenType::ArgMarker]}
             _ => vec![TokenType::Other]
         }
     }
