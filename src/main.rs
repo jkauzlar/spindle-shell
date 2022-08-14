@@ -1,3 +1,5 @@
+extern crate core;
+
 use crate::analyzer::{SemanticAnalyzer};
 use crate::environment::Environment;
 use crate::evaluator::{EvaluationError, Evaluator};
