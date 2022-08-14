@@ -1,6 +1,6 @@
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{Add, Div, Mul, Neg, Sub};
 use std::str::FromStr;
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, ToPrimitive};
 use num_bigint::BigInt;
 use crate::types::{Function, Signature, Type};
 use crate::values::{Value};
@@ -26,7 +26,7 @@ macro_rules! create_cmp_fn {
     };
 }
 
-macro_rules! create_binary_fn {
+macro_rules! create_binary_endo_fn {
     ($name:expr, $typ:tt, $val_name:tt, $($stuff:tt)+) => {
         Function::create(
             $name,
@@ -46,6 +46,23 @@ macro_rules! create_binary_fn {
     }
 }
 
+macro_rules! create_unary_endo_fn {
+    ($name:expr, $typ:tt, $val_name:tt, $($stuff:tt)+) => {
+        Function::create(
+            $name,
+            Signature {
+                value: Type::$typ,
+                arguments: vec![Type::$typ]
+            },
+            |args| {
+                if let Value::$val_name { val : arg0 } = args.get(0).unwrap() {
+                    return Box::new(Value::$val_name { val : $($stuff)+(arg0)})
+                }
+                panic!("")
+            }
+        )
+    }
+}
 
 pub fn get_coercions() -> Vec<Function> {
     let mut funcs = vec![];
@@ -99,17 +116,21 @@ pub fn get_coercions() -> Vec<Function> {
 
 pub fn get_builtins() -> Vec<Function> {
     let mut funcs = vec![];
-    funcs.push(create_binary_fn!("+", Integral, ValueIntegral, (|arg0 : &BigInt, arg1 : &BigInt| arg0.add(arg1))));
-    funcs.push(create_binary_fn!("-", Integral, ValueIntegral, (|arg0 : &BigInt, arg1 : &BigInt| arg0.sub(arg1))));
-    funcs.push(create_binary_fn!("*", Integral, ValueIntegral, (|arg0 : &BigInt, arg1 : &BigInt| arg0.mul(arg1))));
-    funcs.push(create_binary_fn!("/", Integral, ValueIntegral, (|arg0 : &BigInt, arg1 : &BigInt| arg0.div(arg1))));
+    funcs.push(create_binary_endo_fn!("+", Integral, ValueIntegral, (|arg0 : &BigInt, arg1 : &BigInt| arg0.add(arg1))));
+    funcs.push(create_binary_endo_fn!("-", Integral, ValueIntegral, (|arg0 : &BigInt, arg1 : &BigInt| arg0.sub(arg1))));
+    funcs.push(create_binary_endo_fn!("*", Integral, ValueIntegral, (|arg0 : &BigInt, arg1 : &BigInt| arg0.mul(arg1))));
+    funcs.push(create_binary_endo_fn!("/", Integral, ValueIntegral, (|arg0 : &BigInt, arg1 : &BigInt| arg0.div(arg1))));
+    funcs.push(create_binary_endo_fn!("pow", Integral, ValueIntegral, (|arg0 : &BigInt, arg1 : &BigInt| arg0.pow(arg1.to_u32().unwrap()))));
+    funcs.push(create_unary_endo_fn!("-", Integral, ValueIntegral, (|arg0 : &BigInt| arg0.neg())));
+    funcs.push(create_unary_endo_fn!("inc", Integral, ValueIntegral, (|arg0 : &BigInt| arg0.add(BigInt::from(1)))));
 
-    funcs.push(create_binary_fn!("+", Fractional, ValueFractional, (|arg0 : &BigDecimal, arg1 : &BigDecimal| arg0.add(arg1))));
-    funcs.push(create_binary_fn!("-", Fractional, ValueFractional, (|arg0 : &BigDecimal, arg1 : &BigDecimal| arg0.sub(arg1))));
-    funcs.push(create_binary_fn!("*", Fractional, ValueFractional, (|arg0 : &BigDecimal, arg1 : &BigDecimal| arg0.mul(arg1))));
-    funcs.push(create_binary_fn!("/", Fractional, ValueFractional, (|arg0 : &BigDecimal, arg1 : &BigDecimal| arg0.div(arg1))));
+    funcs.push(create_binary_endo_fn!("+", Fractional, ValueFractional, (|arg0 : &BigDecimal, arg1 : &BigDecimal| arg0.add(arg1))));
+    funcs.push(create_binary_endo_fn!("-", Fractional, ValueFractional, (|arg0 : &BigDecimal, arg1 : &BigDecimal| arg0.sub(arg1))));
+    funcs.push(create_binary_endo_fn!("*", Fractional, ValueFractional, (|arg0 : &BigDecimal, arg1 : &BigDecimal| arg0.mul(arg1))));
+    funcs.push(create_binary_endo_fn!("/", Fractional, ValueFractional, (|arg0 : &BigDecimal, arg1 : &BigDecimal| arg0.div(arg1))));
+    funcs.push(create_unary_endo_fn!("-", Fractional, ValueFractional, (|arg0 : &BigDecimal| arg0.neg())));
 
-    funcs.push(create_binary_fn!("+", String, ValueString, (|arg0 : &String, arg1 : &String| {
+    funcs.push(create_binary_endo_fn!("+", String, ValueString, (|arg0 : &String, arg1 : &String| {
                     let mut result = String::from(arg0);
                     result.push_str(arg1);
                     result
@@ -136,21 +157,6 @@ pub fn get_builtins() -> Vec<Function> {
     funcs.push(create_cmp_fn!(String, ValueString, ">=", is_ge));
     funcs.push(create_cmp_fn!(String, ValueString, "<=", is_le));
 
-
-    funcs.push(Function::create(
-        "inc",
-        Signature {
-            value: Type::Integral,
-            arguments: vec![Type::Integral]
-        },
-        |args| {
-
-            if let Value::ValueIntegral { val : arg0 } = args.get(0).unwrap() {
-                return Box::new(Value::ValueIntegral { val : arg0.add(BigInt::from(1)) });
-            }
-            panic!("")
-        }
-    ));
 
     funcs
 }
