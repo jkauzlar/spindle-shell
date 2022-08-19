@@ -105,7 +105,7 @@ impl SemanticAnalyzer<'_> {
                     }
                 }
             }
-            Expr::VariableIdentifier(id) => {
+            Expr::VariableReference(id) => {
                 if let Some(_) = carry_type {
                     return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
                 }

@@ -3,6 +3,7 @@ use std::str::FromStr;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use num_bigint::BigInt;
 use crate::types::{Function, Signature, Type};
+use crate::types::Type::Generic;
 use crate::values::{Value};
 
 
@@ -13,6 +14,7 @@ macro_rules! create_cmp_fn {
             Signature {
                 value : Type::Boolean,
                 arguments : vec![Type::$typ, Type::$typ],
+                resource_type: None,
             },
             |args| {
                 if let Value::$val_name { val : arg0 } = args.get(0).unwrap() {
@@ -32,7 +34,8 @@ macro_rules! create_binary_endo_fn {
             $name,
             Signature {
                 value: Type::$typ,
-                arguments: vec![Type::$typ, Type::$typ]
+                arguments: vec![Type::$typ, Type::$typ],
+                resource_type: None,
             },
             |args| {
                 if let Value::$val_name { val : arg0 } = args.get(0).unwrap() {
@@ -52,7 +55,8 @@ macro_rules! create_unary_endo_fn {
             $name,
             Signature {
                 value: Type::$typ,
-                arguments: vec![Type::$typ]
+                arguments: vec![Type::$typ],
+                resource_type: None,
             },
             |args| {
                 if let Value::$val_name { val : arg0 } = args.get(0).unwrap() {
@@ -72,6 +76,7 @@ pub fn get_coercions() -> Vec<Function> {
         Signature {
             value: Type::Fractional,
             arguments : vec![Type::Integral],
+            resource_type: None,
         },
        |args : Vec<Value> | {
            if let Value::ValueIntegral { val : arg0 } = args.get(0).unwrap() {
@@ -87,6 +92,7 @@ pub fn get_coercions() -> Vec<Function> {
         Signature {
             value: Type::String,
             arguments: vec![Type::Integral],
+            resource_type: None,
         },
         |args : Vec<Value> | {
             if let Value::ValueIntegral { val : arg0 } = args.get(0).unwrap() {
@@ -101,6 +107,7 @@ pub fn get_coercions() -> Vec<Function> {
         Signature {
             value: Type::String,
             arguments: vec![Type::Fractional],
+            resource_type: None,
         },
         |args : Vec<Value> | {
             if let Value::ValueFractional { val : arg0 } = args.get(0).unwrap() {
@@ -157,6 +164,22 @@ pub fn get_builtins() -> Vec<Function> {
     funcs.push(create_cmp_fn!(String, ValueString, ">=", is_ge));
     funcs.push(create_cmp_fn!(String, ValueString, "<=", is_le));
 
+    funcs.push(Function::create(
+        "list",
+        Signature {
+            value: Type::List(Box::new(Type::Generic(String::from("A")))),
+            arguments: vec![Type::Generic(String::from("A"))],
+            resource_type: None,
+        },
+        |args : Vec<Value> | {
+            if let v = args.get(0).unwrap() {
+                return Box::new(Value::ValueList {
+                    item_type : v.get_type(),
+                    vals : vec![v.clone()] });
+            }
+            panic!("");
+        }
+    ));
 
     funcs
 }

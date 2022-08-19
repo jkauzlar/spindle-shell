@@ -11,54 +11,6 @@ use crossterm::cursor::{MoveToColumn};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, read};
 use crossterm::style::{Print, PrintStyledContent};
 
-///
-///
-//                                                                           dddddddd
-//                                        iiii                               d::::::dlllllll
-//                                       i::::i                              d::::::dl:::::l
-//                                        iiii                               d::::::dl:::::l
-//                                                                           d:::::d l:::::l
-//     ssssssssss   ppppp   ppppppppp   iiiiiiinnnn  nnnnnnnn        ddddddddd:::::d  l::::l     eeeeeeeeeeee
-//   ss::::::::::s  p::::ppp:::::::::p  i:::::in:::nn::::::::nn    dd::::::::::::::d  l::::l   ee::::::::::::ee
-// ss:::::::::::::s p:::::::::::::::::p  i::::in::::::::::::::nn  d::::::::::::::::d  l::::l  e::::::eeeee:::::ee
-// s::::::ssss:::::spp::::::ppppp::::::p i::::inn:::::::::::::::nd:::::::ddddd:::::d  l::::l e::::::e     e:::::e
-//  s:::::s  ssssss  p:::::p     p:::::p i::::i  n:::::nnnn:::::nd::::::d    d:::::d  l::::l e:::::::eeeee::::::e
-//    s::::::s       p:::::p     p:::::p i::::i  n::::n    n::::nd:::::d     d:::::d  l::::l e:::::::::::::::::e
-//       s::::::s    p:::::p     p:::::p i::::i  n::::n    n::::nd:::::d     d:::::d  l::::l e::::::eeeeeeeeeee
-// ssssss   s:::::s  p:::::p    p::::::p i::::i  n::::n    n::::nd:::::d     d:::::d  l::::l e:::::::e
-// s:::::ssss::::::s p:::::ppppp:::::::pi::::::i n::::n    n::::nd::::::ddddd::::::ddl::::::le::::::::e
-// s::::::::::::::s  p::::::::::::::::p i::::::i n::::n    n::::n d:::::::::::::::::dl::::::l e::::::::eeeeeeee
-//  s:::::::::::ss   p::::::::::::::pp  i::::::i n::::n    n::::n  d:::::::::ddd::::dl::::::l  ee:::::::::::::e
-//   sssssssssss     p::::::pppppppp    iiiiiiii nnnnnn    nnnnnn   ddddddddd   dddddllllllll    eeeeeeeeeeeeee
-//                   p:::::p
-//                   p:::::p
-//                  p:::::::p
-//                  p:::::::p
-//                  p:::::::p
-//                  ppppppppp
-
-
-
-///
-///                               __   ___
-//                __            /\ \ /\_ \
-//   ____  _____ /\_\    ___    \_\ \\//\ \      __
-//  /',__\/\ '__`\/\ \ /' _ `\  /'_` \ \ \ \   /'__`\
-// /\__, `\ \ \L\ \ \ \/\ \/\ \/\ \L\ \ \_\ \_/\  __/
-// \/\____/\ \ ,__/\ \_\ \_\ \_\ \___,_\/\____\ \____\
-//  \/___/  \ \ \/  \/_/\/_/\/_/\/__,_ /\/____/\/____/
-//           \ \_\
-//            \/_/
-
-
-///
-///             _           _ _
-//            (_)         | | |
-//   ___ ____  _ ____   __| | | _____
-//  /___)  _ \| |  _ \ / _  | || ___ |
-// |___ | |_| | | | | ( (_| | || ____|
-// (___/|  __/|_|_| |_|\____|\_)_____)
-//      |_|
 
 pub trait ShellApplicationEnvironment {
     fn handle_input(&mut self, inp : &str) -> ShellCommand;

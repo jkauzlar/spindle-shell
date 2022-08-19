@@ -4,20 +4,20 @@ use crate::parser::Expr::{Pipeline, Setter};
 use crate::scanner::{EnumTypedVariant, Token, TokenType};
 use crate::values::{Value};
 
-/// ```
-// INPUT       := (identifier '::')? EXECUTABLE
-// EXECUTABLE  := SETTER (';' SETTER)+
-// SETTER      := identifier '<-' PIPELINE | PIPELINE ('->' identifier)?
-// PIPELINE    := EXPR (pipe EXPR)+
-// EXPR        := EQUALITY
-// EQUALITY    := COMPARISON ( EQUALITY_OP COMPARISON)?
-// COMPARISON  := SUM (BOOLEAN_OP SUM)?
-// SUM         := PRODUCT (('+' | '-') PRODUCT)*
-// PRODUCT     := UNARY (('\*' | '/') UNARY)*
-// UNARY       := ('-' FNCALLINNER) | FNCALLINNER
-// FNCALL      := identifier (VALUE)* | VALUE
-// VALUE       := scalar | variable | '(' EXPR ')'````
-// ```
+/// ```text
+/// INPUT       := (identifier '::')? EXECUTABLE
+/// EXECUTABLE  := SETTER (';' SETTER)+
+/// SETTER      := identifier '<-' PIPELINE | PIPELINE ('->' identifier)?
+/// PIPELINE    := EXPR (pipe EXPR)+
+/// EXPR        := EQUALITY
+/// EQUALITY    := COMPARISON ( EQUALITY_OP COMPARISON)?
+/// COMPARISON  := SUM (BOOLEAN_OP SUM)?
+/// SUM         := PRODUCT (('+' | '-') PRODUCT)*
+/// PRODUCT     := UNARY (('\*' | '/') UNARY)*
+/// UNARY       := ('-' FNCALL) | FNCALL
+/// FNCALL      := identifier (VALUE)* | VALUE
+/// VALUE       := scalar | variable | marked-arg | '(' EXPR ')'
+///```
 
 pub struct Parser {
     tkns : Vec<Token>,
@@ -318,7 +318,7 @@ impl Parser {
             } else if local_tkn.has_type(&TokenType::ArgMarker) {
                 if let Token::MarkedArg(id) = self.pop() {
                     let expr_result = self.parse_expr();
-                    match expr_result {
+                    return match expr_result {
                         Ok(unwrapped) => {
                             Ok(Expr::NamedArg(id, Box::from(unwrapped)))
                         }
@@ -330,13 +330,12 @@ impl Parser {
             } else if local_tkn.has_type(&TokenType::Variable){
                 return match self.pop() {
                     Token::Variable(id) => {
-                        Ok(Expr::VariableIdentifier(id))
+                        Ok(Expr::VariableReference(id))
                     }
                     _ => { Err(self.unexpected_token_error(
                         "Impossible! already tested for Token::Variable, but not a Token::Variable!"))
                     }
                 }
-
             } else if local_tkn.has_type(&TokenType::Value) {
                 self.pop();
                 return match local_tkn {
@@ -448,7 +447,7 @@ pub enum Expr {
     NamedArg(String, Box<Expr>),
     Binary(Token, Box<Expr>, Box<Expr>),
     Unary(Token, Box<Expr>),
-    VariableIdentifier(String),
+    VariableReference(String),
     ValueIntegral(Value),
     ValueFractional(Value),
     ValueString(Value),
@@ -484,7 +483,7 @@ impl Display for Expr {
             Expr::Unary(op, expr) => {
                 f.write_str(format!("{}({})", op, expr).as_str())
             }
-            Expr::VariableIdentifier(id) => {
+            Expr::VariableReference(id) => {
                 f.write_str(format!("${}", id).as_str())
             }
             Expr::ValueIntegral(v) => {

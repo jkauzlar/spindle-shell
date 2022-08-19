@@ -48,7 +48,7 @@ impl Evaluator<'_> {
                 if let Some(v) = carry_val {
                     arg_vals.push(v);
                 }
-                Ok(*func.call(arg_vals))
+                Ok(*func.create_call(arg_vals).run())
             }
             Sem::ValueIntegral(v) => {
                 Ok(v)

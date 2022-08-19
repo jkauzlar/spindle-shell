@@ -15,6 +15,7 @@ pub enum Type {
     Time,
     URL,
     Resource,
+    List(Box<Type>),
     Generic(String),
 }
 
@@ -22,6 +23,7 @@ pub enum Type {
 pub struct Signature {
     pub value : Type,
     pub arguments : Vec<Type>,
+    pub resource_type : Option<ResourceType>,
 }
 
 impl Display for Signature {
@@ -41,7 +43,6 @@ pub struct Function {
     sig : Signature,
     f : fn(Vec<Value>) -> Box<Value>,
     marked_args : HashMap<String,Type>,
-    resource_type : Option<ResourceType>,
 }
 
 pub struct FunctionCall {
@@ -60,8 +61,8 @@ impl FunctionCall {
         self.resource = Some(res);
     }
 
-    pub fn run(&self) -> Value {
-        self.func.call(self.args.clone());
+    pub fn run(&self) -> Box<Value> {
+        self.func.call(self.args.clone())
     }
 }
 
@@ -74,7 +75,6 @@ impl Function {
             sig,
             f,
             marked_args: HashMap::new(),
-            resource_type: None,
         }
     }
 
@@ -107,9 +107,6 @@ impl Function {
         self.marked_args.insert(String::from(id), t);
     }
 
-    pub fn set_resource_type(&mut self, rt : ResourceType) {
-        self.resource_type = Some(rt);
-    }
 }
 
 impl Display for Function {
@@ -144,6 +141,9 @@ impl Display for Type {
             }
             Type::Generic(t) => {
                 f.write_str(format!("[{}]", t).as_str())
+            }
+            Type::List(t) => {
+                f.write_str(format!("List<{}>", t.to_string()).as_str())
             }
         }
     }

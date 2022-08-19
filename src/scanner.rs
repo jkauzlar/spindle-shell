@@ -283,6 +283,7 @@ impl Scanner {
         let mut buf = String::new();
         let mut do_stop = false;
         let mut no_match = false;
+        let mut eof_reached = false;
         let mut prev_escape = false;
 
         loop {
@@ -311,12 +312,14 @@ impl Scanner {
                     panic!("We already tested for size, so we shouldn't get here");
                 }
             } else {
+                // we have reached end of file
                 no_match = !allow_eof;
+                eof_reached = true;
                 do_stop = true;
             }
 
             // do not consume the character matched in the predicate
-            if do_stop && !no_match && !allow_eof {
+            if do_stop && !no_match && !eof_reached {
                 self.pos = self.pos - 1;
             }
 
@@ -598,6 +601,8 @@ mod tests {
 
     fn assert_vec_items(tkns : &Vec<Token>, expected_tokens : Vec<Token>) {
         let mut idx = 0;
+        assert_eq!(tkns.len(), expected_tokens.len());
+
         for tkn in tkns {
             let expected = expected_tokens.get(idx).unwrap();
             assert_eq!(tkn, expected);
@@ -690,6 +695,15 @@ mod tests {
             Token::Variable(String::from("my_var")),
             Token::Equals,
             Token::new_integral(String::from("2")).unwrap(),
+        ]);
+        check_scan("a<-(1+$a)", vec![
+            Token::Identifier(String::from("a")),
+            Token::LeftSetter,
+            Token::LeftParens,
+            Token::new_integral(String::from("1")).unwrap(),
+            Token::Plus,
+            Token::Variable(String::from("a")),
+            Token::RightParens,
         ])
     }
 

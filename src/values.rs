@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{Debug, Display, format, Formatter};
 use std::str::{FromStr};
 use bigdecimal::{BigDecimal};
 use num_bigint::{BigInt};
@@ -32,6 +32,11 @@ pub enum Value {
     ValueUrl {
         val : Url
     },
+
+    ValueList {
+        item_type : Type,
+        vals : Vec<Value>
+    }
 }
 
 
@@ -50,6 +55,7 @@ impl Value {
             Value::ValueBoolean { .. } => Type::Boolean,
             Value::ValueTime { .. } => Type::Time,
             Value::ValueUrl { .. } => Type::URL,
+            Value::ValueList { item_type, vals: _vals } => Type::List(Box::new(item_type.clone())),
         }
     }
 
@@ -61,6 +67,21 @@ impl Value {
             Value::ValueBoolean { val } => format!("{}", val),
             Value::ValueTime { val } => format!("{}", val),
             Value::ValueUrl { val } => format!("@{}", val),
+            Value::ValueList { item_type, vals } => {
+                let mut buf = String::new();
+                buf.push('[');
+                let mut first = true;
+                for val in vals {
+                    if !first {
+                        buf.push(',');
+                    } else {
+                        first = false;
+                    }
+                    buf.push_str(val.to_string().as_str());
+                }
+                buf.push(']');
+                buf.to_string()
+            }
         }
     }
 
