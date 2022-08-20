@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use crate::parser::Expr::{Pipeline, Setter};
-use crate::scanner::{EnumTypedVariant, Token, TokenType};
+use crate::tokens::{Token, EnumTypedVariant, TokenType};
 use crate::values::{Value};
 
 /// ```text

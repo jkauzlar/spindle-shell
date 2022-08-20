@@ -22,6 +22,7 @@ mod value_store;
 mod functions;
 mod evaluator;
 mod external_resources;
+mod tokens;
 
 struct App {
     env : Box<Environment>

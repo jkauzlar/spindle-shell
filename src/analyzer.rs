@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 use crate::environment::Environment;
 use crate::parser::{Expr};
-use crate::scanner::{EnumTypedVariant, Token, TokenType};
+use crate::tokens::{Token, EnumTypedVariant, TokenType};
 use crate::types::{Function, Type};
 use crate::values::{Value};
 
