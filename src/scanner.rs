@@ -176,6 +176,15 @@ impl Scanner {
             } else if c == ')' {
                 self.pop();
                 self.push_token(Token::RightParens);
+            } else if c == '[' {
+                self.pop();
+                self.push_token(Token::LeftSquareBracket);
+            } else if c == ']' {
+                self.pop();
+                self.push_token(Token::RightSquareBracket);
+            } else if c == ',' {
+                self.pop();
+                self.push_token(Token::Comma);
             } else if c == '@' {
                 self.pop();
                 if let Some(url_str) = self.read_until(false, true, Scanner::is_space) {
@@ -407,7 +416,6 @@ mod tests {
 
     use crate::Scanner;
     use crate::scanner::{ScannerError, Token};
-    use crate::tokens::Token;
     use crate::values::Value;
 
     fn assert_vec_items(tkns : &Vec<Token>, expected_tokens : Vec<Token>) {

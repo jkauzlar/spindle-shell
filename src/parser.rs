@@ -1,6 +1,6 @@
 use std::error::Error;
-use std::fmt::{Display, Formatter};
-use crate::parser::Expr::{Pipeline, Setter};
+use std::fmt::{Display, Formatter, Write};
+use crate::parser::Expr::{Pipeline, Setter, ValueList};
 use crate::tokens::{Token, EnumTypedVariant, TokenType};
 use crate::values::{Value};
 
@@ -16,7 +16,7 @@ use crate::values::{Value};
 /// PRODUCT     := UNARY (('\*' | '/') UNARY)*
 /// UNARY       := ('-' FNCALL) | FNCALL
 /// FNCALL      := identifier (VALUE)* | VALUE
-/// VALUE       := scalar | variable | marked-arg | '(' EXPR ')'
+/// VALUE       := scalar | variable | marked-arg | '[' EXPR (',' EXPR)* ']' | '(' EXPR ')'
 ///```
 
 pub struct Parser {
@@ -164,16 +164,6 @@ impl Parser {
             }
         }
     }
-
-
-    // EXPR        := EQUALITY
-    // EQUALITY    := COMPARISON ( EQUALITY_OP COMPARISON)?
-    // COMPARISON  := SUM (BOOLEAN_OP SUM)?
-    // SUM         := PRODUCT (('+' | '-') PRODUCT)*
-    // PRODUCT     := UNARY (('\*' | '/') UNARY)*
-    // UNARY       := ('-' FNCALL) | FNCALL
-    // FNCALL      := identifier (VALUE)* | VALUE
-    // VALUE       := scalar | variable | '(' EXPR ')'````
 
     fn parse_expr(&mut self) -> Result<Expr, ParserError> {
         self.parse_equality()
@@ -327,14 +317,41 @@ impl Parser {
                         }
                     }
                 }
-            } else if local_tkn.has_type(&TokenType::Variable){
+            } else if local_tkn.has_type(&TokenType::Variable) {
                 return match self.pop() {
                     Token::Variable(id) => {
                         Ok(Expr::VariableReference(id))
                     }
-                    _ => { Err(self.unexpected_token_error(
-                        "Impossible! already tested for Token::Variable, but not a Token::Variable!"))
+                    _ => {
+                        Err(self.unexpected_token_error(
+                            "Impossible! already tested for Token::Variable, but not a Token::Variable!"))
                     }
+                }
+            } else if local_tkn == Token::LeftSquareBracket {
+                self.pop();
+                return if let Ok(expr) = self.parse_expr() {
+                    let mut exprs = vec!(expr);
+                    while self.check_current(&Token::Comma) {
+                        self.pop(); // pop comma
+                        match self.parse_expr() {
+                            Ok(expr) => {
+                                exprs.push(expr);
+                            }
+                            err @ Err(..) => {
+                                return err;
+                            }
+                        }
+                    }
+                    if self.check_current(&Token::RightSquareBracket) {
+                        self.pop();
+                        Ok(Expr::ValueList(exprs))
+                    } else {
+                        Err(self.unexpected_token_error("Expected a closing bracket after list"))
+                    }
+                } else if self.check_current(&Token::RightSquareBracket) {
+                    Err(ParserError::new("List cannot be empty"))
+                } else {
+                    Err(self.unexpected_token_error("Expected list value"))
                 }
             } else if local_tkn.has_type(&TokenType::Value) {
                 self.pop();
@@ -410,7 +427,6 @@ impl Parser {
         self.tkns.get(self.idx + 1).clone()
     }
 
-
     fn unexpected_token_error(&self, marker : &str) -> ParserError {
         return if let Some(tkn) = self.peek() {
             ParserError::new(format!("Unexpected token [{}] at [{}]", tkn, marker).as_str())
@@ -453,6 +469,7 @@ pub enum Expr {
     ValueString(Value),
     ValueBoolean(Value),
     ValueUrl(Value),
+    ValueList(Vec<Expr>),
 }
 
 impl Display for Expr {
@@ -500,6 +517,21 @@ impl Display for Expr {
             }
             Expr::ValueUrl(v) => {
                 f.write_str(v.to_string().as_str())
+            }
+            Expr::ValueList(exprs) => {
+                let mut buf = String::new();
+                buf.push('[');
+                let mut first = true;
+                for expr in exprs {
+                    if first {
+                        first = false;
+                    } else {
+                        buf.push(',');
+                    }
+                    buf.push_str(expr.to_string().as_str());
+                }
+                buf.push(']');
+                f.write_str(buf.as_str())
             }
         }
     }

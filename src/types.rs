@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Write};
 use std::str::FromStr;
+
 use crate::analyzer::TypeError;
 use crate::external_resources::{ExternalResource, ResourceType};
-
 use crate::values::Value;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -143,7 +143,7 @@ impl Display for Type {
                 f.write_str(format!("[{}]", t).as_str())
             }
             Type::List(t) => {
-                f.write_str(format!("List<{}>", t.to_string()).as_str())
+                f.write_str(format!("List({})", t.to_string()).as_str())
             }
         }
     }
@@ -153,22 +153,149 @@ impl FromStr for Type {
     type Err = TypeError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.eq("String") {
-            Ok(Type::String)
-        } else if s.eq("Int") {
-            Ok(Type::Integral)
-        } else if s.eq("Frac") {
-            Ok(Type::Fractional)
-        } else if s.eq("Boolean") {
-            Ok(Type::Boolean)
-        } else if s.eq("Time") {
-            Ok(Type::Time)
-        } else if s.eq("URL") {
-            Ok(Type::URL)
-        } else if s.eq("Resource") {
-            Ok(Type::Resource)
+        TypeReader::read(s)
+    }
+}
+
+pub struct TypeReader {
+    type_str : String,
+    buf : Vec<char>,
+    pos : usize,
+}
+
+impl TypeReader {
+    pub fn read(type_str : &str) -> Result<Type, TypeError> {
+        let mut tr = TypeReader {
+            type_str : String::from(type_str),
+            buf: type_str.chars().collect(),
+            pos: 0,
+        };
+        let result = tr.read_type();
+
+        if tr.end_of_input_reached() {
+            result
         } else {
-            Err(TypeError::new(format!("Unknown type [{}]", s).as_str()))
+            Err(TypeError::new(format!(
+                "No valid type found in type-string [{}] or extra-characters discovered at position [{}]",
+                tr.type_str, tr.pos).as_str()))
         }
+    }
+
+    fn read_type(&mut self) -> Result<Type, TypeError> {
+        let mut t : Option<Type> = None;
+        let type_name = self.read_type_name();
+        if type_name.eq(&String::from("String")) {
+            t = Some(Type::String)
+        } else if type_name.eq(&String::from("Int")) {
+            t = Some(Type::Integral)
+        } else if type_name.eq(&String::from("Frac")) {
+            t = Some(Type::Fractional)
+        } else if type_name.eq(&String::from("Boolean")) {
+            t = Some(Type::Boolean)
+        } else if type_name.eq(&String::from("Time")) {
+            t = Some(Type::Time)
+        } else if type_name.eq(&String::from("URL")) {
+            t = Some(Type::URL)
+        } else if type_name.eq(&String::from("Resource")) {
+            t = Some(Type::Resource)
+        } else if type_name.eq(&String::from("List")) {
+            if ! self.read_char('(') {
+                return Err(TypeError::new(
+                    format!("Opening parenthesis expected after List type in input [{}]",
+                            self.type_str).as_str()));
+            } else {
+                match self.read_type() {
+                    err @ Err(_) => {
+                        return err;
+                    }
+                    Ok(list_type) => {
+                        t = Some(Type::List(Box::new(list_type)));
+
+                        if ! self.read_char(')') {
+                            return Err(TypeError::new(
+                                format!("Closing parenthesis expected after List type in input [{}]",
+                                        self.type_str).as_str()));
+                        }
+                    }
+                }
+            }
+        } else {
+            t = None
+        }
+
+            match t {
+                None => {
+                    Err(TypeError::new(format!(
+                        "No valid type found in type-string [{}]", self.type_str).as_str()))
+                }
+                Some(t) => {
+                    Ok(t)
+                }
+            }
+    }
+    fn read_type_name(&mut self) -> String {
+        let mut type_buf = String::new();
+        loop {
+            match self.peek() {
+                None => { break; }
+                Some(&c) => {
+                    if c.is_alphabetic() {
+                        type_buf.push(c);
+                        self.pos = self.pos + 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+
+        type_buf
+    }
+
+    fn peek(&self) -> Option<&char> {
+        self.buf.get(self.pos)
+    }
+
+    fn end_of_input_reached(&self) -> bool {
+        self.pos >= self.buf.len()
+    }
+    fn read_char(&mut self, expected: char) -> bool {
+        match self.peek() {
+            None => {
+                false
+            }
+            Some(&c) => {
+                if expected == c {
+                    self.pos = self.pos + 1;
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use crate::analyzer::TypeError;
+    use crate::types::{Type, TypeReader};
+
+    #[test]
+    fn test_typereader() {
+        assert_type("String", Type::String);
+        assert_type("Int", Type::Integral);
+        assert_type("Frac", Type::Fractional);
+        assert_type("Boolean", Type::Boolean);
+        assert_type("Time", Type::Time);
+        assert_type("URL", Type::URL);
+        assert_type("Resource", Type::Resource);
+        assert_type("List(String)", Type::List(Box::new(Type::String)));
+        assert_type("List(List(Time))", Type::List(Box::new(Type::List(Box::new(Type::Time)))));
+    }
+
+    fn assert_type(type_str : &str, expected : Type) {
+        debug_assert_eq!(TypeReader::read(type_str), Ok(expected));
     }
 }

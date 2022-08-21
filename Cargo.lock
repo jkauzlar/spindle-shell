@@ -1706,6 +1706,7 @@ dependencies = [
  "mysql",
  "num-bigint",
  "redis",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",

@@ -148,6 +148,37 @@ impl SemanticAnalyzer<'_> {
                 }
                 Ok(Sem::ValueUrl(v.clone()))
             }
+            Expr::ValueList(exprs) => {
+                if let Some(_) = carry_type {
+                    return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
+                }
+                if exprs.len() == 0 {
+                    return Err(TypeError::new("List cannot be empty"));
+                }
+                let mut list_type : Option<Type> = None;
+                let mut sems = vec![];
+                for e in exprs {
+                    match self.analyze_expr(e, None) {
+                        Ok(sem) => {
+                            match list_type.clone() {
+                                None => {
+                                    list_type = Some(sem.get_type().clone());
+                                }
+                                Some(t) => {
+                                    if t != sem.get_type() {
+                                        return Err(TypeError::new("List item expressions must have the same type"));
+                                    }
+                                }
+                            }
+                            sems.push(sem);
+                        }
+                        err @ Err(_) => {
+                            return err;
+                        }
+                    }
+                }
+                return Ok(Sem::ValueList(sems));
+            }
             _ => {  Err(TypeError::new(""))}
         }
     }
@@ -255,6 +286,7 @@ pub enum Sem {
     ValueUrl(Value),
     ValueBoolean(Value),
     ValueTime(Value),
+    ValueList(Vec<Sem>),
     Variable(String, Box<Sem>),
 }
 
@@ -291,10 +323,20 @@ impl Display for Sem {
             Sem::Variable(name, sem) => {
                 f.write_str(format!("(${} : {})", name, sem.get_type().to_string()).as_str())
             }
+            Sem::ValueList(sems) => {
+                let mut sems_strs = vec![];
+                for sem in sems {
+                    sems_strs.push(sem.to_string());
+                }
+                let sems_str = sems_strs.join(", ");
+
+                f.write_str(format!("[{}]", sems_str).as_str())
+            }
         }
     }
 }
 
+#[derive(Debug, Eq, PartialEq)]
 pub struct TypeError {
     message : String
 }
@@ -342,6 +384,10 @@ impl Typed for Sem {
             Sem::ValueBoolean(_) => { Type::Boolean }
             Sem::ValueTime(_) => { Type::Time}
             Sem::Variable(_, sem) => { sem.get_type().clone()}
+            Sem::ValueList(sems) => {
+                // a list cannot be created empty
+                Type::List(Box::new(sems.get(0).unwrap().get_type().clone()))
+            }
         }
     }
 }

@@ -23,34 +23,42 @@ impl Environment {
             Some((t, v)) => {
                 match Value::from_string(t, v) {
                     Ok(v) => {
-                        match v.get_type() {
-                            Type::String => {
-                                Some(Sem::ValueString(v))
-                            }
-                            Type::Integral => {
-                                Some(Sem::ValueIntegral(v))
-                            }
-                            Type::Fractional => {
-                                Some(Sem::ValueFractional(v))
-                            }
-                            Type::Boolean => {
-                                Some(Sem::ValueBoolean(v))
-                            }
-                            Type::Time => {
-                                Some(Sem::ValueTime(v))
-                            }
-                            Type::URL => {
-                                Some(Sem::ValueUrl(v))
-                            }
-                            _ => {
-                                None
-                            }
-                        }
+                        Environment::value_to_sem(v)
                     }
                     Err(_) => {
                         None
                     }
                 }
+            }
+        }
+    }
+
+    pub fn value_to_sem(val : Value) -> Option<Sem> {
+        match val {
+            Value::ValueString { .. } => {
+                Some(Sem::ValueString(val))
+            }
+            Value::ValueIntegral { .. } => {
+                Some(Sem::ValueIntegral(val))
+            }
+            Value::ValueFractional { .. } => {
+                Some(Sem::ValueFractional(val))
+            }
+            Value::ValueBoolean { .. } => {
+                Some(Sem::ValueBoolean(val))
+            }
+            Value::ValueTime { .. } => {
+                Some(Sem::ValueTime(val))
+            }
+            Value::ValueUrl { .. } => {
+                Some(Sem::ValueUrl(val))
+            }
+            Value::ValueList { item_type, vals } => {
+                let mut sem_vec = vec!();
+                for v in vals {
+                    sem_vec.push(Environment::value_to_sem(v)?);
+                }
+                Some(Sem::ValueList(sem_vec))
             }
         }
     }

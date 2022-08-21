@@ -1,7 +1,9 @@
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Write};
-use crate::analyzer::{Pipe, Sem, SemanticExpression};
+use crate::analyzer::{Pipe, Sem, SemanticExpression, Typed, TypeError};
 use crate::Environment;
+use crate::types::Type;
+use crate::Value::ValueList;
 use crate::values::Value;
 
 pub struct Evaluator<'a> {
@@ -71,6 +73,33 @@ impl Evaluator<'_> {
             Sem::Variable(id, sem) => {
                 self.eval_sem(sem, None)
             }
+            Sem::ValueList(sem_vec) => {
+                if sem_vec.len() == 0 {
+                    return Err(EvaluationError::new("List cannot be empty"));
+                }
+                let mut vals = vec!();
+                let mut type_opt : Option<Type> = None;
+                for s in sem_vec {
+                    match type_opt {
+                        None => {
+                            type_opt = Some(s.get_type().clone());
+                        }
+                        Some(_) => {}
+                    }
+                    match self.eval_sem(Box::new(s), None) {
+                        Ok(v) => {
+                            vals.push(v);
+                        }
+                        err @ Err(_) => {
+                            return err;
+                        }
+                    }
+                }
+                Ok(Value::ValueList {
+                    item_type: type_opt.unwrap(),
+                    vals
+                })
+            }
         }
     }
 }
@@ -78,6 +107,12 @@ impl Evaluator<'_> {
 #[derive(Debug)]
 pub struct EvaluationError {
     message : String
+}
+
+impl EvaluationError {
+    pub fn new(message : &str) -> EvaluationError {
+        EvaluationError { message : String::from(message) }
+    }
 }
 
 impl Display for EvaluationError {

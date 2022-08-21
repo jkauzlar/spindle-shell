@@ -8,36 +8,39 @@ use crate::Value;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum Token {
-    String(Value),
-    Boolean(Value),
-    Integral(Value),
-    Fractional(Value),
-    Time(Value),
-    Url(Value),
-    EndOfStatement,
-    LeftParens,
-    RightParens,
-    Identifier(String),
-    Equals,
-    NotEquals,
-    GreaterThan,
-    LessThan,
-    GreaterThanEquals,
-    LessThanEquals,
-    Plus,
-    Minus,
-    Multiply,
-    Divide,
-    Pipe,
-    PullPipe,
-    PushPipe,
-    StreamPipe,
-    LeftSetter,
-    RightSetter,
-    CommandSpecifier,
-    CommandEval(String),
-    Variable(String),
-    MarkedArg(String),
+    String(Value),          // ('"'.*'"') | '---'(.*)
+    Boolean(Value),         // 'true' | 'false'
+    Integral(Value),        // ([0-9]+)
+    Fractional(Value),      // ([0-9]+'.'[0-9]*')
+    Time(Value),            // TODO
+    Url(Value),             // '@'([\W]+)
+    EndOfStatement,         // ';'
+    LeftParens,             // '('
+    RightParens,            // ')'
+    Identifier(String),     // ([A-Za-z_\.][A-Za-z0-9_\.]+)
+    Equals,                 // '=='
+    NotEquals,              // '!='
+    GreaterThan,            // '>'
+    LessThan,               // '<'
+    GreaterThanEquals,      // '>='
+    LessThanEquals,         // '<='
+    Plus,                   // '+'
+    Minus,                  // '-'
+    Multiply,               // '*'
+    Divide,                 // '/'
+    Pipe,                   // '|'
+    PullPipe,               // '|>'
+    PushPipe,               // '<|'
+    StreamPipe,             // '<|>'
+    LeftSetter,             // '<-'
+    RightSetter,            // '->'
+    LeftSquareBracket,      // '['
+    RightSquareBracket,     // ']'
+    Comma,                  // ','
+    CommandSpecifier,       // '::'
+    CommandEval(String),    // Identifier
+    Variable(String),       // '$'(Identifier)
+    MarkedArg(String),      // '--'(Identifier)
 }
 
 impl Token {
@@ -105,6 +108,9 @@ impl Token {
             Token::Multiply => { String::from("*")}
             Token::Divide => {String::from("/")}
             Token::Pipe => {String::from("|")}
+            Token::LeftSquareBracket => { String::from("[") }
+            Token::RightSquareBracket => { String::from("]") }
+            Token::Comma => { String::from(",") }
             Token::PullPipe => {String::from("|>")}
             Token::PushPipe => { String::from("<|")}
             Token::StreamPipe => {String::from("<|>")}

@@ -70,10 +70,12 @@ impl ShellApplicationEnvironment for App {
                             buf.push_str("\r\n");
                             match SemanticAnalyzer::analyze(&self.env, expr) {
                                 Ok(sem_expr) => {
+                                    buf.push_str("Analyzer output: ");
                                     buf.push_str(sem_expr.to_string().as_str());
                                     buf.push_str("\r\n");
                                     match Evaluator::eval(&mut self.env, sem_expr) {
                                         Ok(v) => {
+                                            buf.push_str("Evaluator output: ");
                                             buf.push_str(v.to_string().as_str());
                                             self.env.store_value("_", v.clone());
                                             // buf.push_str("\r\n");
