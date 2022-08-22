@@ -16,7 +16,10 @@ pub enum Type {
     URL,
     Resource,
     List(Box<Type>),
+    /// Signature type only; not a Value type
     Generic(String),
+    /// Signature type only; not a Value type
+    VarArgs(Box<Type>),
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -139,11 +142,16 @@ impl Display for Type {
             Type::Resource => {
                 f.write_str("Resource")
             }
+            Type::List(t) => {
+                f.write_str(format!("List({})", t.to_string()).as_str())
+            }
+
             Type::Generic(t) => {
                 f.write_str(format!("[{}]", t).as_str())
             }
-            Type::List(t) => {
-                f.write_str(format!("List({})", t.to_string()).as_str())
+
+            Type::VarArgs(t) => {
+                f.write_str(format!("({})*", t.to_string()).as_str())
             }
         }
     }

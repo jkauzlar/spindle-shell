@@ -1,10 +1,12 @@
-use std::ops::{Add, Div, Mul, Neg, Sub};
+use std::ops::{Add, Div, Index, Mul, Neg, Sub};
 use std::str::FromStr;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use num_bigint::BigInt;
+use regex::{Captures, Match, Regex};
 use crate::types::{Function, Signature, Type};
 use crate::types::Type::Generic;
-use crate::values::{Value};
+use crate::Value::ValueString;
+use crate::values::{Value, ValueReader};
 
 
 macro_rules! create_cmp_fn {
@@ -165,20 +167,65 @@ pub fn get_builtins() -> Vec<Function> {
     funcs.push(create_cmp_fn!(String, ValueString, "<=", is_le));
 
     funcs.push(Function::create(
-        "list",
+        "trim",
         Signature {
-            value: Type::List(Box::new(Type::Generic(String::from("A")))),
-            arguments: vec![Type::Generic(String::from("A"))],
+            value: Type::String,
+            arguments: vec![Type::String],
             resource_type: None,
         },
         |args : Vec<Value> | {
-            if let v = args.get(0).unwrap() {
-                return Box::new(Value::ValueList {
-                    item_type : v.get_type(),
-                    vals : vec![v.clone()] });
+            if let Value::ValueString { val } = args.get(0).unwrap() {
+                return Box::new(Value::ValueString {
+                    val: String::from(val.trim())
+                });
             }
             panic!("");
         }
+    ));
+
+    funcs.push(Function::create(
+        "interpolate",
+        Signature {
+            value: Type::String,
+            arguments: vec![Type::String, Type::VarArgs(Box::new(Type::String))],
+            resource_type: None
+        },
+        |args | {
+            if let Value::ValueString { val : target} = args.get(0).unwrap() {
+                let mut interp_vals: Vec<&str> = vec!();
+                let mut idx = 1;
+                while let Some(Value::ValueString { val : arg }) = args.get(idx) {
+                    interp_vals.push(arg);
+                    idx = idx + 1;
+                }
+
+                let mut result = String::from(target);
+
+                let re = Regex::new(r"(\{\{}})").unwrap();
+
+                idx = 0;
+                loop {
+                    match re.find(result.as_str()) {
+                        None => {
+                            break;
+                        }
+                        Some(m) => {
+                            match interp_vals.get(idx) {
+                                None => {
+                                    break;
+                                }
+                                Some(&replacement) => {
+                                    result.replace_range(m.start() .. m.end(), replacement);
+                                    idx = idx + 1;
+                                }
+                            }
+                        }
+                    }
+                }
+                return Box::new(ValueString { val: result });
+            }
+           panic!("")
+       }
     ));
 
     funcs

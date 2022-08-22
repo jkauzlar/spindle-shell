@@ -47,6 +47,7 @@ impl Display for Value {
 }
 
 impl Value {
+
     pub fn get_type(&self) -> Type {
         match self {
             Value::ValueString { .. } => Type::String,

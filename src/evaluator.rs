@@ -4,7 +4,7 @@ use crate::analyzer::{Pipe, Sem, SemanticExpression, Typed, TypeError};
 use crate::Environment;
 use crate::types::Type;
 use crate::Value::ValueList;
-use crate::values::Value;
+use crate::values::{Value, ValueReader};
 
 pub struct Evaluator<'a> {
     env : &'a mut Box<Environment>
@@ -33,9 +33,10 @@ impl Evaluator<'_> {
             }
             SemanticExpression::Setter(id, expr) => {
                 let v = self.eval_sem_expr(expr, None)?;
-                let v_copy = v.clone();
                 self.env.store_value(id.as_str(), v);
-                return Ok(v_copy);
+
+                // suppress output
+                Ok(ValueReader::read("", Type::String).unwrap())
             }
         }
     }
