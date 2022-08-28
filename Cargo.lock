@@ -1697,6 +1697,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "spindle-lang"
+version = "0.1.0"
+
+[[package]]
 name = "spindle-shell"
 version = "0.1.0"
 dependencies = [
@@ -1710,8 +1714,17 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "spindle-lang",
+ "spindle-shell-lib",
  "tokio",
  "tokio-postgres",
+]
+
+[[package]]
+name = "spindle-shell-lib"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
 ]
 
 [[package]]

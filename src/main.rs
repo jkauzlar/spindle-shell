@@ -1,5 +1,6 @@
 extern crate core;
 
+use spindle_shell_lib::{Shell, ShellApplicationEnvironment, ShellCommand};
 use crate::analyzer::{SemanticAnalyzer};
 use crate::environment::Environment;
 use crate::evaluator::{Evaluator};
@@ -7,7 +8,6 @@ use crate::functions::get_builtins;
 
 use crate::parser::{Parser};
 use crate::scanner::{Scanner};
-use crate::shell::{ Shell, ShellApplicationEnvironment, ShellCommand};
 use crate::value_store::InMemoryValueStore;
 use crate::values::Value;
 
@@ -16,7 +16,6 @@ mod environment;
 mod parser;
 mod values;
 mod types;
-mod shell;
 mod analyzer;
 mod value_store;
 mod functions;
