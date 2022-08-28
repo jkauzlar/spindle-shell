@@ -1701,6 +1701,10 @@ name = "spindle-lang"
 version = "0.1.0"
 
 [[package]]
+name = "spindle-metalang"
+version = "0.1.0"
+
+[[package]]
 name = "spindle-shell"
 version = "0.1.0"
 dependencies = [
@@ -1715,6 +1719,7 @@ dependencies = [
  "serde",
  "serde_json",
  "spindle-lang",
+ "spindle-metalang",
  "spindle-shell-lib",
  "tokio",
  "tokio-postgres",
