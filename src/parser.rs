@@ -17,7 +17,7 @@ use crate::values::{Value};
 /// FNCALL      := identifier (PROPERTY)* | PROPERTY
 /// PROP_SET    := '{' PROPERTY (',' PROPERTY)* '}' | PROPERTY
 /// PROPERTY    := identifier ':' VALUE | VALUE
-/// VALUE       := scalar | variable | marked-arg | '[' EXPR (',' EXPR)* ']' | '(' EXPR ')'
+/// VALUE       := scalar | variable | '[' EXPR (',' EXPR)* ']' | '(' EXPR ')'
 ///```
 
 pub struct Parser {
@@ -330,18 +330,6 @@ impl Parser {
                         }
                     }
                 }
-            } else if local_tkn.has_type(&TokenType::ArgMarker) {
-                if let Token::MarkedArg(id) = self.pop() {
-                    let expr_result = self.parse_expr();
-                    return match expr_result {
-                        Ok(unwrapped) => {
-                            Ok(Expr::NamedArg(id, Box::from(unwrapped)))
-                        }
-                        err @ Err(_) => {
-                            err
-                        }
-                    }
-                }
             } else if local_tkn.has_type(&TokenType::Variable) {
                 return match self.pop() {
                     Token::Variable(id) => {
@@ -485,7 +473,6 @@ pub enum Expr {
     Setter(String, Box<Expr>),
     Pipeline(Box<Expr>, Token, Box<Expr>),
     FnCall(String, Vec<Expr>),
-    NamedArg(String, Box<Expr>),
     Binary(Token, Box<Expr>, Box<Expr>),
     Unary(Token, Box<Expr>),
     VariableReference(String),
@@ -517,9 +504,6 @@ impl Display for Expr {
                     arg_str.push(' ');
                 }
                 f.write_str(format!("{}:{}", fname, arg_str).as_str())
-            }
-            Expr::NamedArg(id, expr) => {
-                f.write_str(format!("--{}({})", id, expr).as_str())
             }
             Expr::Binary(op, left, right) => {
                 f.write_str(format!("({}) {} ({})", left, op, right).as_str())

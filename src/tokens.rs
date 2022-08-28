@@ -41,7 +41,6 @@ pub enum Token {
     Comma,                  // ','
     Colon,                  // ':'
     Variable(String),       // '$'(Identifier)
-    MarkedArg(String),      // '--'(Identifier)
 }
 
 impl Token {
@@ -121,7 +120,6 @@ impl Token {
             Token::LeftSetter => {String::from("<-")}
             Token::RightSetter => { String::from("->")}
             Token::Variable(val) => {format!("${}", val.as_str()) }
-            Token::MarkedArg(val) => {format!("--{}", val.as_str())}
         }
     }
 }
@@ -141,7 +139,6 @@ pub enum TokenType {
     UnaryOp,
     BinaryOp,
     BooleanOp,
-    ArgMarker,
     Other,
 }
 
@@ -178,7 +175,6 @@ impl EnumTypedVariant<TokenType> for Token {
             Token::PullPipe => {vec![TokenType::Pipe]}
             Token::PushPipe => {vec![TokenType::Pipe]}
             Token::StreamPipe => {vec![TokenType::Pipe]}
-            Token::MarkedArg(_) => { vec![TokenType::ArgMarker]}
             _ => vec![TokenType::Other]
         }
     }

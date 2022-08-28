@@ -135,17 +135,11 @@ impl Scanner {
                     self.pop();
                     self.push_token(Token::RightSetter);
                 } else if self.check_here(|c| c == '-') {
-                    self.pop();
                     if self.check_here(|c| c == '-') {
+                        self.pop();
                         self.pop();
                         if let Some(rest) = self.read_remaining() {
                             self.push_token(Token::new_string(rest));
-                        }
-                    } else {
-                        if let Ok(id) = self.read_identifier() {
-                            self.push_token(Token::MarkedArg(id));
-                        } else {
-                            return Err(ScannerError::new("Argument marker '--' must be followed by valid identifier"));
                         }
                     }
                 } else {
