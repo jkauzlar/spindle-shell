@@ -1,6 +1,4 @@
-use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::sync::Arc;
 use crate::analyzer::{Sem};
 use crate::types::{Function, Type};
 use crate::value_store::ValueStore;
@@ -36,6 +34,7 @@ impl Environment {
     }
 
     pub fn store_value(&mut self, name: &str, val : Value) {
+        println!("Storing value [{}] with type [{}] to variable [{}]\r", val.to_string(), val.get_type().to_string(), name);
         self.value_store.store(name, val.get_type().to_string(), val.to_string());
     }
 
@@ -124,6 +123,18 @@ fn value_to_sem(val : Value) -> Option<Sem> {
                 sem_vec.push(value_to_sem(v)?);
             }
             Some(Sem::ValueList(sem_vec))
+        }
+        Value::ValueProperty { name, val } => {
+            let sem = value_to_sem(*val.clone())?;
+            Some(Sem::ValueProperty(name, Box::new(sem)))
+        }
+        Value::ValuePropertySet { vals } => {
+            let mut sems = vec![];
+            for val in vals {
+                sems.push(value_to_sem(val)?);
+            }
+
+            Some(Sem::ValuePropertySet(sems))
         }
     }
 }

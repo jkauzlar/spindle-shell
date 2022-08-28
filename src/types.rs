@@ -16,6 +16,8 @@ pub enum Type {
     URL,
     Resource,
     List(Box<Type>),
+    Property(String,Box<Type>),
+    PropertySet(Vec<Type>), // arguments must be properties
     /// Signature type only; not a Value type
     Generic(String),
     /// Signature type only; not a Value type
@@ -48,6 +50,7 @@ pub struct Function {
     marked_args : HashMap<String,Type>,
 }
 
+#[derive(Clone)]
 pub struct FunctionCall {
     func : Function,
     args : Vec<Value>,
@@ -125,10 +128,10 @@ impl Display for Type {
                 f.write_str("String")
             }
             Type::Integral => {
-                f.write_str("Int")
+                f.write_str("Integral")
             }
             Type::Fractional => {
-                f.write_str("Frac")
+                f.write_str("Fractional")
             }
             Type::Boolean => {
                 f.write_str("Boolean")
@@ -152,6 +155,25 @@ impl Display for Type {
 
             Type::VarArgs(t) => {
                 f.write_str(format!("({})*", t.to_string()).as_str())
+            }
+            Type::Property(name, t) => {
+                f.write_str(format!("Prop({}:{})", name, t.to_string()).as_str())
+            }
+            Type::PropertySet(props) => {
+                let mut buf = String::new();
+                buf.push_str("PropertySet(");
+                let mut first = true;
+                for prop in props {
+                    if first {
+                        first = false;
+                    } else {
+                        buf.push(',');
+                    }
+                    buf.push_str(prop.to_string().clone().as_str())
+                }
+
+                buf.push(')');
+                f.write_str(buf.as_str())
             }
         }
     }
@@ -184,8 +206,8 @@ impl TypeReader {
             result
         } else {
             Err(TypeError::new(format!(
-                "No valid type found in type-string [{}] or extra-characters discovered at position [{}]",
-                tr.type_str, tr.pos).as_str()))
+                "No valid type found in type-string [{}] or extra-characters discovered at position [{}] with character [{}]",
+                tr.type_str, tr.pos, tr.peek().unwrap()).as_str()))
         }
     }
 
@@ -194,9 +216,9 @@ impl TypeReader {
         let type_name = self.read_type_name();
         if type_name.eq(&String::from("String")) {
             t = Some(Type::String)
-        } else if type_name.eq(&String::from("Int")) {
+        } else if type_name.eq(&String::from("Integral")) {
             t = Some(Type::Integral)
-        } else if type_name.eq(&String::from("Frac")) {
+        } else if type_name.eq(&String::from("Fractional")) {
             t = Some(Type::Fractional)
         } else if type_name.eq(&String::from("Boolean")) {
             t = Some(Type::Boolean)
@@ -206,41 +228,74 @@ impl TypeReader {
             t = Some(Type::URL)
         } else if type_name.eq(&String::from("Resource")) {
             t = Some(Type::Resource)
-        } else if type_name.eq(&String::from("List")) {
-            if ! self.read_char('(') {
-                return Err(TypeError::new(
-                    format!("Opening parenthesis expected after List type in input [{}]",
-                            self.type_str).as_str()));
-            } else {
-                match self.read_type() {
-                    err @ Err(_) => {
-                        return err;
-                    }
-                    Ok(list_type) => {
-                        t = Some(Type::List(Box::new(list_type)));
-
-                        if ! self.read_char(')') {
-                            return Err(TypeError::new(
-                                format!("Closing parenthesis expected after List type in input [{}]",
-                                        self.type_str).as_str()));
-                        }
+        } else if type_name.eq(&String::from("Prop")) {
+            if self.read_char('(') {
+                let prop_name = self.read_identifier();
+                if prop_name.len() > 0 && self.read_char(':') {
+                    let prop_type = self.read_type()?;
+                    if self.read_char(')') {
+                        t = Some(Type::Property(prop_name, Box::new(prop_type)));
                     }
                 }
+            }
+        } else if type_name.eq(&String::from("PropertySet")) {
+            let sts = self.read_sub_types()?;
+            t = Some(Type::PropertySet(sts));
+        } else if type_name.eq(&String::from("List")) {
+            let sts = self.read_sub_types()?;
+            if let Some(st) = sts.get(0) {
+                t = Some(Type::List(Box::new(st.clone())));
+            } else {
+                t = None;
             }
         } else {
             t = None
         }
 
-            match t {
-                None => {
-                    Err(TypeError::new(format!(
-                        "No valid type found in type-string [{}]", self.type_str).as_str()))
-                }
-                Some(t) => {
-                    Ok(t)
-                }
+        match t {
+            None => {
+                Err(TypeError::new(format!(
+                    "No valid type found in type-string [{}]", self.type_str).as_str()))
             }
+            Some(t) => {
+                Ok(t)
+            }
+        }
     }
+
+    fn read_sub_types(&mut self) -> Result<Vec<Type>, TypeError> {
+        if !self.read_char('(') {
+            Err(TypeError::new(
+                format!("Opening parenthesis expected after subtype in input [{}]",
+                        self.type_str).as_str()))
+        } else {
+            let types = self.read_comma_separated_types()?;
+
+            if !self.read_char(')') {
+                Err(TypeError::new(
+                    format!("Closing parenthesis expected after subtype in input [{}]",
+                            self.type_str).as_str()))
+            } else {
+                Ok(types)
+            }
+        }
+    }
+
+    fn read_comma_separated_types(&mut self) -> Result<Vec<Type>, TypeError> {
+        let mut types = vec![];
+
+        loop {
+            let t = self.read_type()?;
+            types.push(t);
+
+            if !self.read_char(',') {
+                break;
+            }
+        }
+
+        Ok(types)
+    }
+
     fn read_type_name(&mut self) -> String {
         let mut type_buf = String::new();
         loop {
@@ -282,6 +337,24 @@ impl TypeReader {
             }
         }
     }
+    fn read_identifier(&mut self) -> String {
+        let mut type_buf = String::new();
+        loop {
+            match self.peek() {
+                None => { break; }
+                Some(&c) => {
+                    if c.is_alphabetic() || c.is_digit(10) || c == '_' || c =='.' {
+                        type_buf.push(c);
+                        self.pos = self.pos + 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+
+        type_buf
+    }
 }
 
 
@@ -293,13 +366,22 @@ mod tests {
     #[test]
     fn test_typereader() {
         assert_type("String", Type::String);
-        assert_type("Int", Type::Integral);
-        assert_type("Frac", Type::Fractional);
+        assert_type("Integral", Type::Integral);
+        assert_type("Fractional", Type::Fractional);
         assert_type("Boolean", Type::Boolean);
         assert_type("Time", Type::Time);
         assert_type("URL", Type::URL);
         assert_type("Resource", Type::Resource);
         assert_type("List(String)", Type::List(Box::new(Type::String)));
+        assert_type("Prop(my_prop:String)", Type::Property(
+            String::from("my_prop"),Box::new(Type::String)));
+        assert_type("PropertySet(Prop(first_prop:String),Prop(second_prop:Integral),Prop(third_prop:Fractional))",
+                    Type::PropertySet(
+                        vec!(
+                            Type::Property(String::from("first_prop"),Box::new(Type::String)),
+                            Type::Property(String::from("second_prop"),Box::new(Type::Integral)),
+                            Type::Property(String::from("third_prop"),Box::new(Type::Fractional)),
+        )));
         assert_type("List(List(Time))", Type::List(Box::new(Type::List(Box::new(Type::Time)))));
     }
 

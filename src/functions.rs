@@ -1,12 +1,11 @@
-use std::ops::{Add, Div, Index, Mul, Neg, Sub};
+use std::ops::{Add, Div, Mul, Neg, Sub};
 use std::str::FromStr;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use num_bigint::BigInt;
-use regex::{Captures, Match, Regex};
+use regex::{Regex};
 use crate::types::{Function, Signature, Type};
-use crate::types::Type::Generic;
 use crate::Value::ValueString;
-use crate::values::{Value, ValueReader};
+use crate::values::{Value};
 
 
 macro_rules! create_cmp_fn {
@@ -205,7 +204,7 @@ pub fn get_builtins() -> Vec<Function> {
 
                 idx = 0;
                 loop {
-                    match re.find(result.as_str()) {
+                    match re.find(result.clone().as_str()) {
                         None => {
                             break;
                         }

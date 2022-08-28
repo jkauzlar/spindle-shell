@@ -36,9 +36,10 @@ pub enum Token {
     RightSetter,            // '->'
     LeftSquareBracket,      // '['
     RightSquareBracket,     // ']'
+    LeftCurleyBrace,        // '{'
+    RightCurleyBrace,       // '}'
     Comma,                  // ','
-    CommandSpecifier,       // '::'
-    CommandEval(String),    // Identifier
+    Colon,                  // ':'
     Variable(String),       // '$'(Identifier)
     MarkedArg(String),      // '--'(Identifier)
 }
@@ -107,17 +108,18 @@ impl Token {
             Token::Minus => { String::from("-")}
             Token::Multiply => { String::from("*")}
             Token::Divide => {String::from("/")}
+            Token::Colon => {String::from(":")}
             Token::Pipe => {String::from("|")}
             Token::LeftSquareBracket => { String::from("[") }
             Token::RightSquareBracket => { String::from("]") }
+            Token::LeftCurleyBrace => { String::from("{") }
+            Token::RightCurleyBrace => { String::from("}")}
             Token::Comma => { String::from(",") }
             Token::PullPipe => {String::from("|>")}
             Token::PushPipe => { String::from("<|")}
             Token::StreamPipe => {String::from("<|>")}
             Token::LeftSetter => {String::from("<-")}
             Token::RightSetter => { String::from("->")}
-            Token::CommandSpecifier => {String::from("::")}
-            Token::CommandEval(val) => {format!("!{}", val.as_str())}
             Token::Variable(val) => {format!("${}", val.as_str()) }
             Token::MarkedArg(val) => {format!("--{}", val.as_str())}
         }

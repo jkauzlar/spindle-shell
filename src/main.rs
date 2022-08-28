@@ -2,7 +2,7 @@ extern crate core;
 
 use crate::analyzer::{SemanticAnalyzer};
 use crate::environment::Environment;
-use crate::evaluator::{EvaluationError, Evaluator};
+use crate::evaluator::{Evaluator};
 use crate::functions::get_builtins;
 
 use crate::parser::{Parser};
@@ -47,9 +47,9 @@ impl ShellApplicationEnvironment for App {
         let mut buf = String::new();
 
         if inp.starts_with(':') {
-            if let Some(userCommand)  = App::parse_user_command(inp) {
-                match userCommand {
-                    UserCommand::QUIT => return ShellCommand::QUIT
+            if let Some(user_command)  = App::parse_user_command(inp) {
+                return match user_command {
+                    UserCommand::QUIT => ShellCommand::QUIT
                 }
             }
         }

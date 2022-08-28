@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Write};
 use crate::environment::Environment;
 use crate::parser::{Expr};
 use crate::tokens::{Token, EnumTypedVariant, TokenType};
@@ -32,15 +32,43 @@ impl SemanticAnalyzer<'_> {
             Expr::Pipeline(left_expr, pipe, right_expr) => {
                 let left_sem = self.analyze_expr(&left_expr, carry_type)?;
                 let sem_pipe = SemanticAnalyzer::translate_pipe(pipe);
-                match self.create_sem_tree(right_expr, Some(left_sem.get_type())) {
-                    Ok(right_sem) => {
-                        Ok(SemanticExpression::PipedCommand {
-                            sem: left_sem,
-                            pipe: Some((sem_pipe, Box::new(right_sem))),
-                        })
+
+                match sem_pipe {
+                    Pipe::Value => {
+                        match self.create_sem_tree(right_expr, Some(left_sem.get_type())) {
+                            Ok(right_sem) => {
+                                Ok(SemanticExpression::PipedCommand {
+                                    sem: left_sem,
+                                    pipe: Some((sem_pipe, Box::new(right_sem))),
+                                })
+                            }
+                            Err(err) => {
+                                Err(err)
+                            }
+                        }
                     }
-                    Err(err) => {
-                        Err(err)
+                    Pipe::Push => {
+                        // check that the outgoing type supports collection
+                        Err(TypeError::new("Unsupported pipe"))
+                    }
+                    Pipe::Pull => {
+                        // check that the incoming type is streamable
+                        match left_sem {
+                            Sem::FnCall(f, _) => {
+
+
+                            }
+                            _ => {
+
+                            }
+                        }
+
+                        Err(TypeError::new("Unsupported pipe"))
+                    }
+                    Pipe::Stream => {
+                        // check that the incoming type is streamable
+                        // check that the outgoing type supports collection
+                        Err(TypeError::new("Unsupported pipe"))
                     }
                 }
             }
@@ -147,6 +175,32 @@ impl SemanticAnalyzer<'_> {
                     return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
                 }
                 Ok(Sem::ValueUrl(v.clone()))
+            }
+            Expr::ValueProperty(prop_name, prop_exr) => {
+                if let Some(_) = carry_type {
+                    return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
+                }
+                let arg_sem = self.analyze_expr(prop_exr, None)?;
+                Ok(Sem::ValueProperty(prop_name.clone(), Box::new(arg_sem)))
+            }
+            Expr::ValuePropertySet(props) => {
+                if let Some(_) = carry_type {
+                    return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
+                }
+                let mut prop_sems = vec![];
+                for prop in props {
+                    let expr = self.analyze_expr(prop, None)?;
+                    match expr {
+                        p @ Sem::ValueProperty(_, _ ) => {
+                            prop_sems.push(p);
+                        }
+                        _ => {
+                            return Err(TypeError::new("Illegal attempt to insert non-property into property set"));
+                        }
+                    }
+                }
+
+                Ok(Sem::ValuePropertySet(prop_sems))
             }
             Expr::ValueList(exprs) => {
                 if let Some(_) = carry_type {
@@ -278,6 +332,7 @@ impl Display for Pipe {
     }
 }
 
+#[derive(Clone)]
 pub enum Sem {
     FnCall(Function, Vec<Sem>),
     ValueIntegral(Value),
@@ -287,6 +342,8 @@ pub enum Sem {
     ValueBoolean(Value),
     ValueTime(Value),
     ValueList(Vec<Sem>),
+    ValueProperty(String, Box<Sem>),
+    ValuePropertySet(Vec<Sem>),
     Variable(String, Box<Sem>),
 }
 
@@ -331,6 +388,22 @@ impl Display for Sem {
                 let sems_str = sems_strs.join(", ");
 
                 f.write_str(format!("[{}]", sems_str).as_str())
+            }
+            Sem::ValueProperty(id,sem) => {
+                f.write_str(format!("Property({}:{})", id, sem.to_string()).as_str())
+            }
+            Sem::ValuePropertySet(props) => {
+                let mut prop_strs = vec![];
+                for prop in props {
+                    prop_strs.push(prop.to_string());
+                }
+                let mut buf = String::new();
+                buf.push_str("PropertySet(");
+                buf.push_str(prop_strs.join(", ").as_str());
+                buf.push(')');
+
+                f.write_str(buf.as_str())
+
             }
         }
     }
@@ -385,8 +458,13 @@ impl Typed for Sem {
             Sem::ValueTime(_) => { Type::Time}
             Sem::Variable(_, sem) => { sem.get_type().clone()}
             Sem::ValueList(sems) => {
-                // a list cannot be created empty
+                // a list cannot be created empty, therefore the unwrap is safe
                 Type::List(Box::new(sems.get(0).unwrap().get_type().clone()))
+            }
+            Sem::ValueProperty(name, sem) => {
+                Type::Property(name.clone(), Box::new(sem.get_type().clone())) }
+            Sem::ValuePropertySet(props) => {
+                Type::PropertySet(props.iter().map(|p| p.get_type()).collect())
             }
         }
     }

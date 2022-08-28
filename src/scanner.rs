@@ -2,12 +2,7 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
 
-use bigdecimal::{BigDecimal, ParseBigDecimalError};
-use num_bigint::{BigInt, ParseBigIntError};
-use reqwest::Url;
 use crate::tokens::{ScannerError, Token};
-
-use crate::values::{Value};
 
 pub struct Scanner {
     chars: Vec<char>,
@@ -108,13 +103,8 @@ impl Scanner {
                 if self.check_next(|c| c == '=') {
                     self.read_count(2);
                     self.push_token(Token::NotEquals);
-                } else if self.check_next(Scanner::is_alpha) {
-                    self.pop(); // read exclamation point
-                    if let Ok(id_str) = self.read_identifier() {
-                        self.push_token(Token::CommandEval(id_str));
-                    } else {
-                        return Err(ScannerError::new("Invalid token [!]"));
-                    }
+                } else {
+                    return Err(ScannerError::new("Invalid token [!]"));
                 }
             } else if c == '>' {
                 self.pop();
@@ -182,6 +172,12 @@ impl Scanner {
             } else if c == ']' {
                 self.pop();
                 self.push_token(Token::RightSquareBracket);
+            } else if c == '{' {
+                self.pop();
+                self.push_token(Token::LeftCurleyBrace);
+            } else if c == '}' {
+                self.pop();
+                self.push_token(Token::RightCurleyBrace);
             } else if c == ',' {
                 self.pop();
                 self.push_token(Token::Comma);
@@ -207,12 +203,7 @@ impl Scanner {
             } else if c == ':' {
                 self.pop();
                 if let Some(&next) = self.peek() {
-                    if next == ':' {
-                        self.pop();
-                        self.push_token(Token::CommandSpecifier);
-                    } else {
-                        return Err(ScannerError::new("Invalid character [:]"));
-                    }
+                    self.push_token(Token::Colon);
                 } else {
                     return Err(ScannerError::new("Invalid character [:]"));
                 }
@@ -286,7 +277,7 @@ impl Scanner {
     }
 
     fn read_remaining(&mut self) -> Option<String> {
-        self.read_until(true, true, |c| false)
+        self.read_until(true, true, |_| false)
     }
 
     fn read_until(&mut self, allow_escape_before_pred : bool, allow_eof : bool, test: fn(char) -> bool) -> Option<String> {

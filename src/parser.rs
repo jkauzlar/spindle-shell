@@ -1,11 +1,10 @@
 use std::error::Error;
-use std::fmt::{Display, Formatter, Write};
-use crate::parser::Expr::{Pipeline, Setter, ValueList};
+use std::fmt::{Display, Formatter};
+use crate::parser::Expr::{Pipeline, Setter};
 use crate::tokens::{Token, EnumTypedVariant, TokenType};
 use crate::values::{Value};
 
 /// ```text
-/// INPUT       := (identifier '::')? EXECUTABLE
 /// EXECUTABLE  := SETTER (';' SETTER)+
 /// SETTER      := identifier '<-' PIPELINE | PIPELINE ('->' identifier)?
 /// PIPELINE    := EXPR (pipe EXPR)+
@@ -15,7 +14,9 @@ use crate::values::{Value};
 /// SUM         := PRODUCT (('+' | '-') PRODUCT)*
 /// PRODUCT     := UNARY (('\*' | '/') UNARY)*
 /// UNARY       := ('-' FNCALL) | FNCALL
-/// FNCALL      := identifier (VALUE)* | VALUE
+/// FNCALL      := identifier (PROPERTY)* | PROPERTY
+/// PROP_SET    := '{' PROPERTY (',' PROPERTY)* '}' | PROPERTY
+/// PROPERTY    := identifier ':' VALUE | VALUE
 /// VALUE       := scalar | variable | marked-arg | '[' EXPR (',' EXPR)* ']' | '(' EXPR ')'
 ///```
 
@@ -34,41 +35,11 @@ impl Parser {
     }
 
     fn parse_command(&mut self) -> Result<Command, ParserError> {
-        match self.check_identifier() {
-            None => {
-                if let Ok(exprs) = self.parse_executable() {
-                    Ok(Command {
-                        id: None,
-                        exprs
-                    })
-                } else {
-                    Err(ParserError::new("todo error message parse_input"))
-                }
-            }
-            Some(id) => {
-                let local_id = id.clone();
-                if self.check_next(&Token::CommandSpecifier) {
-                    self.pop(); // pop the identifier
-                    self.pop(); // pop the command specifier
-                    if let Ok(exprs) = self.parse_executable() {
-                        Ok(Command {
-                            id: Some(local_id),
-                            exprs
-                        })
-                    } else {
-                        Ok(Command {
-                            id: Some(local_id),
-                            exprs: vec![]
-                        })
-                    }
-                } else {
-                    Ok(Command {
-                       id: Some(local_id),
-                        exprs: self.parse_executable()?
-                    })
-                }
-            }
-        }
+        let exprs = self.parse_executable()?;
+        Ok(Command {
+            id: None,
+            exprs
+        })
     }
 
     fn parse_executable(&mut self) -> Result<Vec<Expr>, ParserError> {
@@ -271,19 +242,73 @@ impl Parser {
             let local_tkn = tkn.clone();
             return match local_tkn {
                 Token::Identifier(id) => {
-                    self.pop(); // pop identifier
-                    let mut args = vec![];
-                    while let Ok(expr) = self.parse_value() {
-                        args.push(expr);
+                    if !self.check_next(&Token::Colon) {
+                        self.pop(); // pop identifier
+                        let mut args = vec![];
+                        while let Ok(expr) = self.parse_propset() {
+                            args.push(expr);
+                        }
+                        Ok(Expr::FnCall(id, args))
+                    } else {
+                        self.parse_propset()
                     }
-                    Ok(Expr::FnCall(id, args))
+                }
+                _ => {
+                    self.parse_propset()
+                }
+            }
+        }
+        Err(ParserError::new("todo error message: parse_fncall"))
+    }
+
+    fn parse_propset(&mut self) -> Result<Expr, ParserError> {
+        if self.check_current(&Token::LeftCurleyBrace) {
+            self.pop();
+            let prop = self.parse_property()?;
+            let mut prop_vec = vec!();
+            prop_vec.push(prop);
+            while self.check_current(&Token::Comma) {
+                self.pop();
+                prop_vec.push(self.parse_property()?);
+            }
+
+            if self.check_current(&Token::RightCurleyBrace) {
+                self.pop();
+            } else {
+                return Err(ParserError::new("Expected right curley-brace to close property set"))
+            }
+
+            Ok(Expr::ValuePropertySet(prop_vec))
+        } else {
+            self.parse_property()
+        }
+    }
+
+    fn parse_property(&mut self) -> Result<Expr, ParserError> {
+        if let Some(tkn) = self.peek() {
+            let local_tkn = tkn.clone();
+            return match local_tkn {
+                Token::Identifier(id) => {
+                    if self.check_next(&Token::Colon) {
+                        self.pop(); // pop identifier
+                        self.pop(); // pop colon
+                        if let Ok(expr) = self.parse_property() {
+                            Ok(Expr::ValueProperty(id, Box::new(expr)))
+                        } else {
+                            Err(ParserError::new(format!(
+                                "Expression expected in property definition for property [{}]", id)
+                                .as_str()))
+                        }
+                    } else {
+                        self.parse_property()
+                    }
                 }
                 _ => {
                     self.parse_value()
                 }
             }
         }
-        Err(ParserError::new("todo error message: parse_fncall_inner"))
+        Err(ParserError::new("todo error message: parse_property"))
     }
 
     fn parse_value(&mut self) -> Result<Expr, ParserError> {
@@ -470,6 +495,8 @@ pub enum Expr {
     ValueBoolean(Value),
     ValueUrl(Value),
     ValueList(Vec<Expr>),
+    ValueProperty(String, Box<Expr>),
+    ValuePropertySet(Vec<Expr>),
 }
 
 impl Display for Expr {
@@ -531,6 +558,24 @@ impl Display for Expr {
                     buf.push_str(expr.to_string().as_str());
                 }
                 buf.push(']');
+                f.write_str(buf.as_str())
+            }
+            Expr::ValueProperty(prop_name, prop_val) => {
+                f.write_str(format!("(\"{}\": {})", prop_name, prop_val).as_str())
+            }
+            Expr::ValuePropertySet(props) => {
+                let mut buf = String::new();
+                buf.push('{');
+                let mut first = true;
+                for prop in props {
+                    if first {
+                        first = false;
+                    } else {
+                        buf.push(',');
+                    }
+                    buf.push_str(prop.to_string().as_str());
+                }
+                buf.push('}');
                 f.write_str(buf.as_str())
             }
         }
