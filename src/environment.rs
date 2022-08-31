@@ -34,7 +34,6 @@ impl Environment {
     }
 
     pub fn store_value(&mut self, name: &str, val : Value) {
-        println!("Storing value [{}] with type [{}] to variable [{}]\r", val.to_string(), val.get_type().to_string(), name);
         self.value_store.store(name, val.get_type().to_string(), val.to_string());
     }
 

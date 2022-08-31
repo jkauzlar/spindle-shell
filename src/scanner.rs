@@ -103,7 +103,7 @@ impl Scanner {
                 if self.check_next(|c| c == '=') {
                     self.read_count(2);
                     self.push_token(Token::NotEquals);
-                } else {
+            } else {
                     return Err(ScannerError::new("Invalid token [!]"));
                 }
             } else if c == '>' {

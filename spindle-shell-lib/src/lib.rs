@@ -1,15 +1,14 @@
+#![allow(unused_results)]
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::io;
 use std::io::{stdout, Stdout, Write};
 
-use crossterm::{
-    cursor,
-    QueueableCommand, style::{self, Stylize}, terminal
-};
+use crossterm::{cursor, execute, QueueableCommand, style::{self, Stylize}, terminal};
 use crossterm::cursor::{MoveToColumn};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, read};
 use crossterm::style::{Print, PrintStyledContent};
+use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 
 
 pub trait ShellApplicationEnvironment {
@@ -17,9 +16,13 @@ pub trait ShellApplicationEnvironment {
     fn supply_prompt(&self) -> String;
 }
 
+pub trait ShellDisplayable {
+    fn pretty_print_shell(&self, stdout : &mut Stdout);
+}
+
 pub enum ShellCommand {
-    OUT(String),
-    ERR(String),
+    OUT(Box<dyn ShellDisplayable>),
+    ERR(Box<dyn ShellDisplayable>),
     QUIT,
 }
 
@@ -38,13 +41,12 @@ impl Shell {
     }
 
     pub fn run(&mut self) -> Result<(), ShellError> {
-        terminal::enable_raw_mode();
         let mut stdout = io::stdout();
+        execute!(stdout, EnterAlternateScreen);
+        terminal::enable_raw_mode();
         let mut exit_shell = false;
 
         while !exit_shell {
-            stdout.queue(MoveToColumn(0));
-            stdout.flush();
 
             let prompt = self.app_env.supply_prompt();
             stdout.queue(style::PrintStyledContent(prompt.yellow()));
@@ -123,35 +125,33 @@ impl Shell {
                     Err(_) => {}
                 }
             }
-            stdout.queue(Print("\n"));
-            stdout.queue(MoveToColumn(0));
+            stdout.queue(Print("\n\r"));
             stdout.flush();
 
             if !exit_shell && line_editor.text().trim().len() > 0 {
                 let command = self.app_env.handle_input(line_editor.text().as_str());
                 match command {
-                    ShellCommand::OUT(res_str) => {
-                        stdout.queue(Print("\n"));
-                        stdout.queue(style::PrintStyledContent(res_str.white()));
-                        stdout.queue(Print("\n"));
+                    ShellCommand::OUT(displayable) => {
+                        displayable.pretty_print_shell(&mut stdout)
                     }
-                    ShellCommand::ERR(err_str) => {
-                        stdout.queue(Print("\n"));
-                        stdout.queue(style::PrintStyledContent(err_str.dark_red()));
-                        stdout.queue(Print("\n"));
+                    ShellCommand::ERR(displayable) => {
+                        displayable.pretty_print_shell(&mut stdout)
                     }
                     ShellCommand::QUIT => {
                         break;
                     }
                 }
+                stdout.queue(Print("\n\r"));
             }
 
         }
 
-        terminal::disable_raw_mode();
         stdout.queue(PrintStyledContent("\n\nGoodbye!\n\n".yellow()));
         stdout.queue(MoveToColumn(0));
         stdout.flush();
+
+        terminal::disable_raw_mode();
+        execute!(stdout, LeaveAlternateScreen);
 
         Ok(())
     }
