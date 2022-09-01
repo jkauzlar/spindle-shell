@@ -69,6 +69,24 @@ macro_rules! create_unary_endo_fn {
     }
 }
 
+pub struct SpecialFunctions {}
+
+impl SpecialFunctions {
+    pub fn id() -> Function {
+        Function::create(
+            "id",
+            Signature {
+                value: Type::Generic(String::from("T")),
+                arguments: vec![Type::Generic(String::from("T"))],
+                resource_type: None
+            },
+            |args : Vec<Value>| {
+                return Box::new(args.get(0).unwrap().clone())
+            }
+        )
+    }
+}
+
 pub fn get_coercions() -> Vec<Function> {
     let mut funcs = vec![];
 
@@ -164,6 +182,8 @@ pub fn get_builtins() -> Vec<Function> {
     funcs.push(create_cmp_fn!(String, ValueString, "<", is_lt));
     funcs.push(create_cmp_fn!(String, ValueString, ">=", is_ge));
     funcs.push(create_cmp_fn!(String, ValueString, "<=", is_le));
+
+    funcs.push(SpecialFunctions::id());
 
     funcs.push(Function::create(
         "trim",

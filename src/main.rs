@@ -9,7 +9,7 @@ use spindle_shell_lib::{Shell, ShellApplicationEnvironment, ShellCommand, ShellD
 use crate::analyzer::{SemanticAnalyzer};
 use crate::environment::Environment;
 use crate::evaluator::{Evaluator};
-use crate::functions::get_builtins;
+use crate::functions::{get_builtins, get_coercions};
 
 use crate::parser::{Parser};
 use crate::scanner::{Scanner};
@@ -233,6 +233,10 @@ fn main() {
     };
 
     for func in get_builtins() {
+        app.env.put_function(func);
+    }
+
+    for func in get_coercions() {
         app.env.put_function(func);
     }
 

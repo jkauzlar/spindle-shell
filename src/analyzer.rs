@@ -88,6 +88,24 @@ impl SemanticAnalyzer<'_> {
         }
     }
 
+    fn apply_coercions(args : Vec<Sem>, coercions : Vec<Function>) -> Vec<Sem> {
+        let mut coerced_args = vec![];
+        let mut idx = 0;
+        for arg in args {
+            let coercion = &coercions[idx];
+
+            if coercion.name().eq("id") {
+                coerced_args.push(arg);
+            } else {
+                coerced_args.push(Sem::FnCall(coercion.clone(), vec![arg]));
+            }
+
+            idx = idx + 1;
+        }
+
+        coerced_args
+    }
+
     fn analyze_expr(&mut self, expr : &Expr, carry_type : Option<Type>) -> Result<Sem, TypeError> {
         match expr {
             Expr::FnCall(fn_name, args) => {
@@ -99,8 +117,9 @@ impl SemanticAnalyzer<'_> {
                     None => {
                         Err(TypeError::new("todo type error"))
                     }
-                    Some(f) => {
-                        Ok(Sem::FnCall(f, sem_args))
+                    Some((f, coercions)) => {
+                        Ok(Sem::FnCall(f, SemanticAnalyzer::apply_coercions(
+                            sem_args, coercions)))
                     }
                 }
             }
@@ -114,8 +133,10 @@ impl SemanticAnalyzer<'_> {
                     None => {
                         Err(TypeError::new("todo type error"))
                     }
-                    Some(f) => {
-                        Ok(Sem::FnCall(f, vec![left_arg, right_arg]))
+                    Some((f, coercions)) => {
+                        Ok(Sem::FnCall(f,
+                                       SemanticAnalyzer::apply_coercions(
+                                           vec![left_arg, right_arg], coercions)))
                     }
                 }
             }
@@ -128,8 +149,10 @@ impl SemanticAnalyzer<'_> {
                     None => {
                         Err(TypeError::new("todo type error"))
                     }
-                    Some(f) => {
-                        Ok(Sem::FnCall(f, vec![arg]))
+                    Some((f, coercions)) => {
+                        Ok(Sem::FnCall(
+                            f, SemanticAnalyzer::apply_coercions(
+                                vec![arg], coercions)))
                     }
                 }
             }
@@ -247,7 +270,7 @@ impl SemanticAnalyzer<'_> {
         }
     }
 
-    fn resolve_fn(&self, fn_name: &String, args: &Vec<Sem>, carry_type : Option<Type>) -> Option<Function> {
+    fn resolve_fn(&self, fn_name: &String, args: &Vec<Sem>, carry_type : Option<Type>) -> Option<(Function, Vec<Function>)> {
         let mut type_vec : Vec<Type> = args.iter().map(|sem| sem.get_type()).collect();
         if let Some(t) = carry_type {
             type_vec.push(t);
@@ -261,7 +284,7 @@ impl SemanticAnalyzer<'_> {
         self.env.resolve_value(var_name)
     }
 
-    fn resolve_binary_fn(&self, op : &Token, left_arg : &Sem, right_arg : &Sem) -> Option<Function> {
+    fn resolve_binary_fn(&self, op : &Token, left_arg : &Sem, right_arg : &Sem) -> Option<(Function, Vec<Function>)> {
         if op.has_type(&TokenType::BinaryOp) || op.has_type(&TokenType::BooleanOp) {
             self.env.find_function(&op.get_string_rep(),
                                    vec![left_arg.get_type(), right_arg.get_type()])
@@ -270,7 +293,7 @@ impl SemanticAnalyzer<'_> {
         }
     }
 
-    fn resolve_unary_fn(&self, op : &Token, arg : &Sem) -> Option<Function> {
+    fn resolve_unary_fn(&self, op : &Token, arg : &Sem) -> Option<(Function, Vec<Function>)> {
         if op.has_type(&TokenType::UnaryOp) {
             self.env.find_function(&op.get_string_rep(), vec![arg.get_type()])
         } else {
