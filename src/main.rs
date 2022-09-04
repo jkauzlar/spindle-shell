@@ -4,6 +4,8 @@ extern crate core;
 use std::io::{Error, Stdout};
 use crossterm::{QueueableCommand, style};
 use crossterm::style::{Print, Stylize};
+use regex::internal::Inst;
+use tokio::time::Instant;
 use spindle_metalang::{PreprocCommand, SpindlePreprocessor};
 use spindle_shell_lib::{Shell, ShellApplicationEnvironment, ShellCommand, ShellDisplayable};
 use crate::analyzer::{SemanticAnalyzer};
@@ -28,6 +30,7 @@ mod evaluator;
 mod external_resources;
 mod tokens;
 mod values_display;
+mod function_resolver;
 
 struct App {
     env : Box<Environment>
@@ -143,16 +146,17 @@ impl ShellApplicationEnvironment for App {
     fn handle_input(&mut self, inp: &str) -> ShellCommand {
         let mut input_buffer = String::from(inp);
         let mut print_type_only = false;
+        let mut print_exec_time = false;
         let mut buf = String::new();
 
         match SpindlePreprocessor::run(input_buffer.as_str()) {
             Err(preproc_err) => {
                 return ShellCommand::ERR(Box::new(ShellMessage::ErrorMessage(preproc_err.to_string())));
             }
-            Ok(PreprocCommand::QUIT) => {
+            Ok(PreprocCommand::Quit) => {
                 return ShellCommand::QUIT;
             }
-            Ok(PreprocCommand::HELP) => {
+            Ok(PreprocCommand::Help) => {
                 let mut rows : Vec<Vec<String>> = vec![];
                 for cmd in PreprocCommand::get_command_infos() {
                     rows.push(vec![cmd.pp_cmd_name.clone(), cmd.pp_cmd_desc.clone()]);
@@ -163,15 +167,22 @@ impl ShellApplicationEnvironment for App {
                 };
                 return ShellCommand::OUT(Box::new(tbl));
             }
-            Ok(PreprocCommand::TYPES(expr)) => {
+            Ok(PreprocCommand::Types(expr)) => {
                 input_buffer.clear();
                 input_buffer.push_str(expr.clone().as_str());
                 print_type_only = true;
             }
-            Ok(PreprocCommand::NO_COMMAND) => {
+            Ok(PreprocCommand::Timer(expr)) => {
+                input_buffer.clear();
+                input_buffer.push_str(expr.clone().as_str());
+                print_exec_time = true;
+            }
+            Ok(PreprocCommand::NoCommand) => {
                 // continue as normal
             }
         }
+
+        let start_time = Instant::now();
 
         return match Scanner::scan(input_buffer.as_str()) {
             Ok(tkns) => {
@@ -186,8 +197,14 @@ impl ShellApplicationEnvironment for App {
                                     } else {
                                         match Evaluator::eval(&mut self.env, sem_expr) {
                                             Ok(v) => {
+                                                let stop_time = Instant::now();
                                                 buf.push_str(v.to_string().as_str());
+                                                buf.push_str(";\n\r");
                                                 self.env.store_value("_", v.clone());
+                                                let exec_time = stop_time.duration_since(start_time).as_micros();
+                                                if print_exec_time {
+                                                    buf.push_str(format!("Execution Time: {}μs\r\n", exec_time).as_str());
+                                                }
                                             }
                                             Err(err) => {
                                                 return ShellCommand::ERR(Box::new(ShellMessage::ErrorMessage(err.to_string())));

@@ -85,13 +85,17 @@ impl SpecialFunctions {
             }
         )
     }
+
+    pub fn coercion_fn_name() -> String {
+        String::from("coercion")
+    }
 }
 
 pub fn get_coercions() -> Vec<Function> {
     let mut funcs = vec![];
 
     funcs.push(Function::create(
-       "coercion",
+       SpecialFunctions::coercion_fn_name().as_str(),
         Signature {
             value: Type::Fractional,
             arguments : vec![Type::Integral],
@@ -107,7 +111,7 @@ pub fn get_coercions() -> Vec<Function> {
     ));
 
     funcs.push(Function::create(
-       "coercion",
+        SpecialFunctions::coercion_fn_name().as_str(),
         Signature {
             value: Type::String,
             arguments: vec![Type::Integral],
@@ -122,7 +126,7 @@ pub fn get_coercions() -> Vec<Function> {
     ));
 
     funcs.push(Function::create(
-        "coercion",
+        SpecialFunctions::coercion_fn_name().as_str(),
         Signature {
             value: Type::String,
             arguments: vec![Type::Fractional],

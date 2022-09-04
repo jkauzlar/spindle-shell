@@ -4,6 +4,7 @@ use std::str::FromStr;
 
 use crate::analyzer::TypeError;
 use crate::external_resources::{ExternalResource, ResourceType};
+use crate::types::Type::Property;
 use crate::values::Value;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -24,11 +25,53 @@ pub enum Type {
     VarArgs(Box<Type>),
 }
 
+impl Type {
+    fn is_generic(&self) -> bool {
+        match self {
+            Type::Generic(_) => {
+                true
+            }
+            Type::List(t) => {
+                t.is_generic()
+            }
+            Type::Property(_, t) => {
+                t.is_generic()
+            }
+            Type::PropertySet(ps) => {
+                for t in ps {
+                    if t.is_generic() {
+                        return true;
+                    }
+                }
+                false
+            }
+            Type::VarArgs(t) => {
+                t.is_generic()
+            }
+            _ => {
+                false
+            }
+        }
+    }
+}
+
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Signature {
     pub value : Type,
     pub arguments : Vec<Type>,
     pub resource_type : Option<ResourceType>,
+}
+
+impl Signature {
+    pub fn is_generic(&self) -> bool {
+        for t in &self.arguments {
+            if t.is_generic() {
+                return true;
+            }
+        }
+
+        false
+    }
 }
 
 impl Display for Signature {
@@ -47,21 +90,63 @@ pub struct Function {
     name : String,
     sig : Signature,
     f : fn(Vec<Value>) -> Box<Value>,
-    marked_args : HashMap<String,Type>,
+}
+
+impl Function {
+    /// Change the generic types to concrete types
+    pub fn reify_types(&self, concrete_types : &HashMap<String, Type>) -> Function {
+        Function {
+            name: self.name.clone(),
+            sig: Signature {
+                value: Function::reify_type(&Box::new(self.sig.value.clone()), concrete_types).clone(),
+                arguments: self.sig.arguments.clone()
+                    .iter()
+                    .map(|t| Function::reify_type(&Box::new(t.clone()), concrete_types))
+                    .collect(),
+                resource_type: self.sig.resource_type.clone(),
+            },
+            f: self.f,
+        }
+    }
+
+    pub fn reify_type(t : &Box<Type>, concrete_types : &HashMap<String, Type>) -> Type {
+        let unboxed : Type = *t.clone();
+        match unboxed {
+            Type::Generic(name) => {
+                concrete_types.get(name.as_str()).unwrap().clone()
+            }
+            Type::List(t) => {
+                Type::List(Box::new(Function::reify_type(&t, concrete_types)))
+            }
+            Type::Property(name, t) => {
+                Type::Property(name.clone(),
+                               Box::new(Function::reify_type(&t, concrete_types)))
+            }
+            Type::PropertySet(props) => {
+                let mut props_vec : Vec<Type> = vec![];
+                for p in props {
+                    props_vec.push(Function::reify_type(&Box::new(p.clone()), concrete_types))
+                }
+                Type::PropertySet(props_vec)
+            }
+            Type::VarArgs(t) => {
+                Type::VarArgs(Box::new(Function::reify_type(&t, concrete_types)))
+            }
+            matched @ _ => {
+                matched.clone()
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
 pub struct FunctionCall {
     func : Function,
     args : Vec<Value>,
-    marked_args : HashMap<String, Value>,
     resource : Option<ExternalResource>
 }
 
 impl FunctionCall {
-    pub fn set_marked_arg(&mut self, name : &str, v : Value) {
-        self.marked_args.insert(String::from(name), v);
-    }
 
     pub fn set_resource(&mut self, res : ExternalResource) {
         self.resource = Some(res);
@@ -80,7 +165,6 @@ impl Function {
             name: String::from(name),
             sig,
             f,
-            marked_args: HashMap::new(),
         }
     }
 
@@ -88,7 +172,6 @@ impl Function {
         FunctionCall {
             func: self.clone(),
             args,
-            marked_args: Default::default(),
             resource: None
         }
     }
@@ -107,10 +190,6 @@ impl Function {
 
     pub fn call(&self, args : Vec<Value>) -> Box<Value> {
         (self.f)(args)
-    }
-
-    pub fn set_marked_arg_type(&mut self, id : &str, t : Type) {
-        self.marked_args.insert(String::from(id), t);
     }
 
 }
@@ -360,8 +439,10 @@ impl TypeReader {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use crate::analyzer::TypeError;
-    use crate::types::{Type, TypeReader};
+    use crate::types::{Function, Signature, Type, TypeReader};
+    use crate::Value;
 
     #[test]
     fn test_typereader() {
@@ -384,6 +465,30 @@ mod tests {
         )));
         assert_type("List(List(Time))", Type::List(Box::new(Type::List(Box::new(Type::Time)))));
     }
+
+    #[test]
+    fn test_type_reification() {
+        let my_fn = Function::create(
+            "vararg_func",
+            Signature {
+                value: Type::List(Box::new(Type::Generic(String::from("A")))),
+                arguments: vec![Type::VarArgs(Box::new(Type::Generic(String::from("A"))))],
+                resource_type: None
+            },
+            |args| {
+                Box::new(Value::ValueString { val : String::from("")})
+            }
+        );
+        let mut type_hash : HashMap<String, Type> = HashMap::new();
+        type_hash.insert(String::from("A"), Type::String);
+
+        let reified_fn = my_fn.reify_types(&type_hash);
+
+        assert_eq!(reified_fn.name, my_fn.name);
+        assert_eq!(reified_fn.sig.value, Type::List(Box::new(Type::String)));
+        assert_eq!(reified_fn.sig.arguments.get(0).unwrap(), &Type::VarArgs(Box::new(Type::String)));
+    }
+
 
     fn assert_type(type_str : &str, expected : Type) {
         debug_assert_eq!(TypeReader::read(type_str), Ok(expected));

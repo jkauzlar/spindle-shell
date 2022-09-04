@@ -47,10 +47,7 @@ impl Evaluator<'_> {
             Sem::FnCall(func, args) => {
                 let mut arg_vals : Vec<Value> = vec!();
                 for arg in args {
-                    arg_vals.push(self.eval_sem(&Box::new(arg.clone()), None)?)
-                }
-                if let Some(v) = carry_val {
-                    arg_vals.push(v);
+                    arg_vals.push(self.eval_sem(&Box::new(arg.clone()), carry_val.clone())?)
                 }
                 Ok(*func.create_call(arg_vals).run())
             }
@@ -73,10 +70,10 @@ impl Evaluator<'_> {
                 Ok(v.clone())
             }
             Sem::Variable(id, sem) => {
-                self.eval_sem(&sem, None)
+                self.eval_sem(&sem, carry_val.clone())
             }
             Sem::ValueProperty(id, sem) => {
-                let v = self.eval_sem(&sem, None)?;
+                let v = self.eval_sem(&sem, carry_val.clone())?;
                 Ok(ValueProperty {
                     name: id.clone(),
                     val: Box::new(v),
@@ -85,7 +82,7 @@ impl Evaluator<'_> {
             Sem::ValuePropertySet(sems) => {
                 let mut vals = vec![];
                 for s in sems {
-                    vals.push(self.eval_sem(&Box::new(s), None)?);
+                    vals.push(self.eval_sem(&Box::new(s), carry_val.clone())?);
                 }
                 Ok(ValuePropertySet { vals })
             }
@@ -102,7 +99,7 @@ impl Evaluator<'_> {
                         }
                         Some(_) => {}
                     }
-                    match self.eval_sem(&Box::new(s.clone()), None) {
+                    match self.eval_sem(&Box::new(s.clone()), carry_val.clone()) {
                         Ok(v) => {
                             vals.push(v);
                         }
@@ -117,6 +114,16 @@ impl Evaluator<'_> {
                 })
             }
 
+            Sem::ValueCarry(_) => {
+                match carry_val {
+                    None => {
+                        Err(EvaluationError::new("Carry-over value expected"))
+                    }
+                    Some(v) => {
+                        Ok(v)
+                    }
+                }
+            }
         }
     }
 }

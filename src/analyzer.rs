@@ -117,9 +117,8 @@ impl SemanticAnalyzer<'_> {
                     None => {
                         Err(TypeError::new("todo type error"))
                     }
-                    Some((f, coercions)) => {
-                        Ok(Sem::FnCall(f, SemanticAnalyzer::apply_coercions(
-                            sem_args, coercions)))
+                    Some(sem) => {
+                        Ok(sem)
                     }
                 }
             }
@@ -133,10 +132,8 @@ impl SemanticAnalyzer<'_> {
                     None => {
                         Err(TypeError::new("todo type error"))
                     }
-                    Some((f, coercions)) => {
-                        Ok(Sem::FnCall(f,
-                                       SemanticAnalyzer::apply_coercions(
-                                           vec![left_arg, right_arg], coercions)))
+                    Some(sem) => {
+                        Ok(sem)
                     }
                 }
             }
@@ -149,10 +146,8 @@ impl SemanticAnalyzer<'_> {
                     None => {
                         Err(TypeError::new("todo type error"))
                     }
-                    Some((f, coercions)) => {
-                        Ok(Sem::FnCall(
-                            f, SemanticAnalyzer::apply_coercions(
-                                vec![arg], coercions)))
+                    Some(sem) => {
+                        Ok(sem)
                     }
                 }
             }
@@ -270,32 +265,35 @@ impl SemanticAnalyzer<'_> {
         }
     }
 
-    fn resolve_fn(&self, fn_name: &String, args: &Vec<Sem>, carry_type : Option<Type>) -> Option<(Function, Vec<Function>)> {
-        let mut type_vec : Vec<Type> = args.iter().map(|sem| sem.get_type()).collect();
+    fn resolve_fn(&self, fn_name: &String, args: &Vec<Sem>, carry_type : Option<Type>) -> Option<Sem> {
         if let Some(t) = carry_type {
-            type_vec.push(t);
+            let mut args_with_carry = vec![];
+            for s in args {
+                args_with_carry.push(s.clone());
+            }
+            args_with_carry.push(Sem::ValueCarry(t));
+            self.env.find_function(fn_name, &args_with_carry)
+        } else {
+            self.env.find_function(fn_name, args)
         }
-        self.env.find_function(
-            fn_name,
-            type_vec)
     }
 
     fn resolve_var(&self, var_name : &String) -> Option<Sem> {
         self.env.resolve_value(var_name)
     }
 
-    fn resolve_binary_fn(&self, op : &Token, left_arg : &Sem, right_arg : &Sem) -> Option<(Function, Vec<Function>)> {
+    fn resolve_binary_fn(&self, op : &Token, left_arg : &Sem, right_arg : &Sem) -> Option<Sem> {
         if op.has_type(&TokenType::BinaryOp) || op.has_type(&TokenType::BooleanOp) {
             self.env.find_function(&op.get_string_rep(),
-                                   vec![left_arg.get_type(), right_arg.get_type()])
+                                   &vec![left_arg.clone(), right_arg.clone()])
         } else {
             panic!("Encountered a non-binary token while analyzing binary operations!");
         }
     }
 
-    fn resolve_unary_fn(&self, op : &Token, arg : &Sem) -> Option<(Function, Vec<Function>)> {
+    fn resolve_unary_fn(&self, op : &Token, arg : &Sem) -> Option<Sem> {
         if op.has_type(&TokenType::UnaryOp) {
-            self.env.find_function(&op.get_string_rep(), vec![arg.get_type()])
+            self.env.find_function(&op.get_string_rep(), &vec![arg.clone()])
         } else {
             panic!("Encountered a non-unary token while analyzing unary operations!");
         }
@@ -358,6 +356,7 @@ impl Display for Pipe {
 #[derive(Clone)]
 pub enum Sem {
     FnCall(Function, Vec<Sem>),
+    ValueCarry(Type),
     ValueIntegral(Value),
     ValueFractional(Value),
     ValueString(Value),
@@ -368,6 +367,50 @@ pub enum Sem {
     ValueProperty(String, Box<Sem>),
     ValuePropertySet(Vec<Sem>),
     Variable(String, Box<Sem>),
+}
+
+impl Sem {
+    pub fn from_value(val : Value) -> Self {
+        match val {
+            Value::ValueString { .. } => {
+                Sem::ValueString(val)
+            }
+            Value::ValueIntegral { .. } => {
+                Sem::ValueIntegral(val)
+            }
+            Value::ValueFractional { .. } => {
+                Sem::ValueFractional(val)
+            }
+            Value::ValueBoolean { .. } => {
+                Sem::ValueBoolean(val)
+            }
+            Value::ValueTime { .. } => {
+                Sem::ValueTime(val)
+            }
+            Value::ValueUrl { .. } => {
+                Sem::ValueUrl(val)
+            }
+            Value::ValueList { item_type, vals } => {
+                let mut sem_vec = vec!();
+                for v in vals {
+                    sem_vec.push(Sem::from_value(v));
+                }
+                Sem::ValueList(sem_vec)
+            }
+            Value::ValueProperty { name, val } => {
+                let sem = Sem::from_value(*val.clone());
+                Sem::ValueProperty(name, Box::new(sem))
+            }
+            Value::ValuePropertySet { vals } => {
+                let mut sems = vec![];
+                for val in vals {
+                    sems.push(Sem::from_value(val));
+                }
+
+                Sem::ValuePropertySet(sems)
+            }
+        }
+    }
 }
 
 impl Display for Sem {
@@ -427,6 +470,9 @@ impl Display for Sem {
 
                 f.write_str(buf.as_str())
 
+            }
+            Sem::ValueCarry(t) => {
+                f.write_str(format!("[Carry-over: {}]", t.to_string()).as_str())
             }
         }
     }
@@ -488,6 +534,9 @@ impl Typed for Sem {
                 Type::Property(name.clone(), Box::new(sem.get_type().clone())) }
             Sem::ValuePropertySet(props) => {
                 Type::PropertySet(props.iter().map(|p| p.get_type()).collect())
+            }
+            Sem::ValueCarry(t) => {
+                t.clone()
             }
         }
     }

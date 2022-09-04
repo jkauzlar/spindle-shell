@@ -12,19 +12,22 @@ impl SpindlePreprocessor {
 }
 
 pub enum PreprocCommand {
-    NO_COMMAND,
-    QUIT,
-    TYPES(String),
-    HELP,
+    NoCommand,
+    Quit,
+    Types(String),
+    Timer(String),
+    Help,
 }
 
 impl PreprocCommand {
     pub fn get_command_infos() -> Vec<PreprocCommandInfo> {
         let mut info = vec![];
-        info.push(PreprocCommandInfo::new("[h]elp", "show this help text"));
-        info.push(PreprocCommandInfo::new("[q]uit", "exit shell"));
-        info.push(PreprocCommandInfo::new("[t]ype(s) <expression>",
+        info.push(PreprocCommandInfo::new(":[h]elp", "show this help text"));
+        info.push(PreprocCommandInfo::new(":[q]uit", "exit shell"));
+        info.push(PreprocCommandInfo::new(":[t]ype(s) <expression>",
                                           "do not execute, but show only the types of the following expression"));
+        info.push(PreprocCommandInfo::new(":time <expression>",
+                                          "Print the execution time of the following expression"));
 
         info
     }
@@ -79,21 +82,23 @@ impl PreprocCommandParser {
                     }
                 }
             } else {
-                Ok(PreprocCommand::NO_COMMAND)
+                Ok(PreprocCommand::NoCommand)
             }
         } else {
-            Ok(PreprocCommand::NO_COMMAND)
+            Ok(PreprocCommand::NoCommand)
         }
     }
 
     fn parse_command(&mut self) -> Result<PreprocCommand, PreprocessorError> {
         let cmd_str = self.read_while(|c| c.is_alphabetic());
         if cmd_str.as_str().eq("help") || cmd_str.as_str().eq("h") {
-            Ok(PreprocCommand::HELP)
+            Ok(PreprocCommand::Help)
         } else if cmd_str.as_str().eq("quit") || cmd_str.as_str().eq("q") {
-            Ok(PreprocCommand::QUIT)
+            Ok(PreprocCommand::Quit)
         } else if cmd_str.as_str().eq("type") || cmd_str.as_str().eq("types") || cmd_str.as_str().eq("t") {
-            Ok(PreprocCommand::TYPES(self.read_remaining()))
+            Ok(PreprocCommand::Types(self.read_remaining()))
+        } else if cmd_str.as_str().eq("time") {
+            Ok(PreprocCommand::Timer(self.read_remaining()))
         } else if cmd_str.as_str().eq("") {
             Err(PreprocessorError::new("Shell command name should follow colon. Type ':help' for more information."))
         } else {
