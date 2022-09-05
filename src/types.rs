@@ -26,7 +26,7 @@ pub enum Type {
 }
 
 impl Type {
-    fn is_generic(&self) -> bool {
+    pub fn is_generic(&self) -> bool {
         match self {
             Type::Generic(_) => {
                 true
@@ -50,6 +50,157 @@ impl Type {
             }
             _ => {
                 false
+            }
+        }
+    }
+
+    /// should be called on the type that contains the generics; other type must be concrete
+    pub fn match_to_concrete(&self, other_type : &Type) -> Option<HashMap<String, Type>> {
+        let mut concrete_type_map : HashMap<String, Type> = HashMap::new();
+        if self.is_generic() {
+            match self {
+                Type::List(list_type) => {
+                    match other_type {
+                        Type::List(other_list_type) => {
+                            let mappings = list_type.match_to_concrete(other_list_type)?;
+                            for (mapping_label, mapping_type) in mappings.iter() {
+                                concrete_type_map.insert(mapping_label.clone(), mapping_type.clone());
+                            }
+                        }
+                        _ => {
+                            return None;
+                        }
+                    }
+                }
+                Type::Property(prop_name, prop_type) => {
+                    match other_type {
+                        Type::Property(other_prop_name, other_prop_type) => {
+                            if prop_name.eq(other_prop_name) {
+                                let mappings = prop_type.match_to_concrete(other_prop_type)?;
+                                for (mapping_label, mapping_type) in mappings.iter() {
+                                    concrete_type_map.insert(mapping_label.clone(), mapping_type.clone());
+                                }
+                            } else {
+                                return None;
+                            }
+                        }
+                        _ => {
+                            return None;
+                        }
+                    }
+                }
+                Type::PropertySet(props) => {
+                    match other_type {
+                        Type::PropertySet(other_props) => {
+                            if props.len() != other_props.len() {
+                                return None;
+                            }
+                            for other_prop in other_props {
+                                match other_prop {
+                                    Property(other_prop_name, _) => {
+                                        let prop = self.get_property(other_prop_name)?;
+                                        let mappings = prop.match_to_concrete(other_prop)?;
+                                        for (mapping_label, mapping_type) in mappings.iter() {
+                                            concrete_type_map.insert(mapping_label.clone(), mapping_type.clone());
+                                        }
+                                    }
+                                    _ => {
+                                        panic!("Property set contains non-property type!")
+                                    }
+                                }
+                            }
+                        }
+                        _ => {
+                            return None;
+                        }
+                    }
+                }
+                Type::Generic(type_label) => {
+                    concrete_type_map.insert(type_label.clone(), other_type.clone());
+                }
+                Type::VarArgs(t) => {
+                    panic!("handle varargs separately")
+                }
+                _ => {
+                    panic!("Can't have a generic non-abstract type!")
+                }
+            }
+
+            Some(concrete_type_map)
+        } else {
+            if self.eq(other_type) {
+                Some(concrete_type_map)
+            } else {
+                None
+            }
+        }
+    }
+
+    pub fn reify_generics(&self, concrete_types : &HashMap<String, Type>) -> Type {
+        let unboxed : Type = self.clone();
+        match unboxed {
+            Type::Generic(name) => {
+                concrete_types.get(name.as_str()).unwrap().clone()
+            }
+            Type::List(t) => {
+                Type::List(Box::new(t.reify_generics(concrete_types)))
+            }
+            Type::Property(name, t) => {
+                Type::Property(name.clone(),
+                               Box::new(t.reify_generics(concrete_types)))
+            }
+            Type::PropertySet(props) => {
+                let mut props_vec : Vec<Type> = vec![];
+                for p in props {
+                    props_vec.push(p.reify_generics(concrete_types))
+                }
+                Type::PropertySet(props_vec)
+            }
+            Type::VarArgs(t) => {
+                Type::VarArgs(Box::new(t.reify_generics(concrete_types)))
+            }
+            matched @ _ => {
+                matched.clone()
+            }
+        }
+    }
+
+
+    pub fn list_of(other_type : Type) -> Self {
+        Type::List(Box::new(other_type))
+    }
+
+    pub fn generic(lbl : &str) -> Self {
+        Type::Generic(String::from(lbl))
+    }
+
+    pub fn prop(name : &str, t : Type) -> Self {
+        Type::Property(String::from(name), Box::new(t))
+    }
+
+    pub fn vararg(t : Type) -> Self {
+        Type::VarArgs(Box::new(t))
+    }
+
+    pub fn get_property(&self, name : &str) -> Option<Self> {
+        match self {
+            Type::PropertySet(props) => {
+                for prop in props {
+                    match prop {
+                        Type::Property(prop_name, _) => {
+                            if prop_name.as_str().eq(name) {
+                                return Some(prop.clone());
+                            }
+                        }
+                        _ => {
+                            panic!("Property set contains non-property item!")
+                        }
+                    }
+                }
+                return None;
+            }
+            _ => {
+                panic!("Not a property set!")
             }
         }
     }
@@ -98,43 +249,14 @@ impl Function {
         Function {
             name: self.name.clone(),
             sig: Signature {
-                value: Function::reify_type(&Box::new(self.sig.value.clone()), concrete_types).clone(),
+                value: self.sig.value.reify_generics(concrete_types).clone(),
                 arguments: self.sig.arguments.clone()
                     .iter()
-                    .map(|t| Function::reify_type(&Box::new(t.clone()), concrete_types))
+                    .map(|t| t.reify_generics(concrete_types))
                     .collect(),
                 resource_type: self.sig.resource_type.clone(),
             },
             f: self.f,
-        }
-    }
-
-    pub fn reify_type(t : &Box<Type>, concrete_types : &HashMap<String, Type>) -> Type {
-        let unboxed : Type = *t.clone();
-        match unboxed {
-            Type::Generic(name) => {
-                concrete_types.get(name.as_str()).unwrap().clone()
-            }
-            Type::List(t) => {
-                Type::List(Box::new(Function::reify_type(&t, concrete_types)))
-            }
-            Type::Property(name, t) => {
-                Type::Property(name.clone(),
-                               Box::new(Function::reify_type(&t, concrete_types)))
-            }
-            Type::PropertySet(props) => {
-                let mut props_vec : Vec<Type> = vec![];
-                for p in props {
-                    props_vec.push(Function::reify_type(&Box::new(p.clone()), concrete_types))
-                }
-                Type::PropertySet(props_vec)
-            }
-            Type::VarArgs(t) => {
-                Type::VarArgs(Box::new(Function::reify_type(&t, concrete_types)))
-            }
-            matched @ _ => {
-                matched.clone()
-            }
         }
     }
 }
@@ -442,6 +564,7 @@ mod tests {
     use std::collections::HashMap;
     use crate::analyzer::TypeError;
     use crate::types::{Function, Signature, Type, TypeReader};
+    use crate::types::Type::Generic;
     use crate::Value;
 
     #[test]
@@ -464,6 +587,60 @@ mod tests {
                             Type::Property(String::from("third_prop"),Box::new(Type::Fractional)),
         )));
         assert_type("List(List(Time))", Type::List(Box::new(Type::List(Box::new(Type::Time)))));
+    }
+
+    #[test]
+    fn test_match_to_concrete() {
+        let g1 = Type::list_of(Type::generic("A"));
+        let c1 = Type::list_of(Type::String);
+
+        match g1.match_to_concrete(&c1) {
+            None => {
+                assert_eq!(1, 2, "List(A) =~ List(String)")
+            }
+            Some(mappings) => {
+                assert!(mappings.contains_key("A"));
+                assert_eq!(mappings.get("A"), Some(&Type::String))
+            }
+        }
+
+        let g2 = Type::list_of(Type::generic("A"));
+        let c2 = Type::String;
+
+        match g2.match_to_concrete(&c2) {
+            None => {
+                // expected
+            }
+            Some(mappings) => {
+                assert_eq!(1, 2, "List(A) !~ String")
+            }
+        }
+
+        let g3 = Type::list_of(Type::generic("A"));
+        let c3 = Type::list_of(Type::list_of(Type::Integral));
+
+        match g3.match_to_concrete(&c3) {
+            None => {
+                assert_eq!(1, 2, "List(A) =~ List(List(Integral))")
+            }
+            Some(mappings) => {
+                assert!(mappings.contains_key("A"));
+                assert_eq!(mappings.get("A"), Some(&Type::list_of(Type::Integral)))
+            }
+        }
+
+        let g4 = Type::PropertySet(vec![Type::prop("name1", Type::String), Type::prop("name2", Type::generic("A"))]);
+        let c4 = Type::PropertySet(vec![Type::prop("name2", Type::Fractional), Type::prop("name1", Type::String)]);
+
+        match g4.match_to_concrete(&c4) {
+            None => {
+                assert_eq!(1, 2, "PropertySet(Property('name1', String),Property('name2',Generic(A))) =~ PropertySet(Property('name2', Fractional),Property('name1',String))")
+            }
+            Some(mappings) => {
+                assert!(mappings.contains_key("A"));
+                assert_eq!(mappings.get("A"), Some(&Type::Fractional))
+            }
+        }
     }
 
     #[test]

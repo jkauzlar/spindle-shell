@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::analyzer::{Sem, Typed};
 use crate::Environment;
 use crate::functions::SpecialFunctions;
@@ -23,16 +24,14 @@ impl FunctionResolver<'_> {
 
         // try without coercions
         for f in funcs {
-            if let Some(sem) = FuncMatcher::try_match(
-                self, f, &self.arg_sems, false) {
+            if let Some(sem) = FuncMatcher::try_match(self, f, &self.arg_sems, false) {
                 return Some(sem);
             }
         }
 
         // try with coercions
         for f in funcs {
-            if let Some(sem) = FuncMatcher::try_match(
-                self, f, &self.arg_sems, true) {
+            if let Some(sem) = FuncMatcher::try_match(self, f, &self.arg_sems, true) {
                 return Some(sem);
             }
         }
@@ -82,6 +81,7 @@ struct FuncMatcher<'a> {
     provided_arg_idx: usize,
     allow_coercions : bool,
     coercion_fns : Vec<Function>,
+    concrete_type_map : HashMap<String, Type>,
 }
 
 impl FuncMatcher<'_> {
@@ -100,6 +100,7 @@ impl FuncMatcher<'_> {
             provided_arg_idx: 0,
             allow_coercions,
             coercion_fns: vec![],
+            concrete_type_map: HashMap::new(),
         }.run()
     }
 
@@ -123,9 +124,50 @@ impl FuncMatcher<'_> {
             None
         } else {
             Some(Sem::FnCall(
-                self.func.clone(),
+                self.func.clone().reify_types(&self.concrete_type_map),
                 self.apply_coercions(),
             ))
+        }
+    }
+
+    fn match_func_arg(&mut self, func_arg_type: &Type) -> bool {
+        match func_arg_type {
+            Type::VarArgs(vararg_type) => {
+                while self.match_func_arg(vararg_type) { }
+                return true;
+            }
+            _ => {
+                if let Some(cfn) = self.check_provided_arg_matches(func_arg_type) {
+                    self.coercion_fns.push(cfn);
+                    self.consume_provided_arg_type();
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// returns a coercion function if arg_type matches the current provided type.
+    /// if !allow_coercions, then return identity function
+    fn check_provided_arg_matches(&mut self, t: &Type) -> Option<Function> {
+        let provided_arg = self.current_provided_arg_type()?;
+        if t.is_generic() {
+            let concrete_types = t.match_to_concrete(provided_arg)?;
+            for (type_lbl, concrete_type) in concrete_types.iter() {
+                self.concrete_type_map.insert(String::from(type_lbl), concrete_type.clone());
+            }
+            // do we need to handle coercions with generics?
+            Some(SpecialFunctions::id())
+        } else if provided_arg.eq(t) {
+            Some(SpecialFunctions::id())
+        } else if self.allow_coercions {
+            let cf = self.func_resolver.find_function_with_value_type(
+                &SpecialFunctions::coercion_fn_name(),
+                &vec![provided_arg.clone()],
+                &t.clone())?;
+            Some(cf)
+        } else {
+            None
         }
     }
 
@@ -157,22 +199,6 @@ impl FuncMatcher<'_> {
         )
     }
 
-    fn match_func_arg(&mut self, func_arg_type: &Type) -> bool {
-        match func_arg_type {
-            Type::VarArgs(vararg_type) => {
-                while self.match_func_arg(vararg_type) { }
-                return true;
-            }
-            _ => {
-                if let Some(cfn) = self.check_provided_arg_matches(func_arg_type) {
-                    self.coercion_fns.push(cfn);
-                    self.consume_provided_arg_type();
-                    return true;
-                }
-            }
-        }
-        false
-    }
 
     fn consume_func_type(&mut self) {
         self.func_arg_idx = self.func_arg_idx + 1
@@ -186,22 +212,6 @@ impl FuncMatcher<'_> {
         self.provided_arg_types.get(self.provided_arg_idx)
     }
 
-    /// returns a coercion function if arg_type matches the current provided type.
-    /// if !allow_coercions, then return identity function
-    fn check_provided_arg_matches(&self, t: &Type) -> Option<Function> {
-        let provided_arg = self.current_provided_arg_type()?;
-        if provided_arg.eq(t) {
-            Some(SpecialFunctions::id())
-        } else if self.allow_coercions {
-            let cf = self.func_resolver.find_function_with_value_type(
-                &SpecialFunctions::coercion_fn_name(),
-                &vec![provided_arg.clone()],
-                &t.clone())?;
-            Some(cf)
-        } else {
-            None
-        }
-    }
 }
 
 #[cfg(test)]
@@ -211,6 +221,7 @@ mod test {
     use crate::types::{Function, Signature, Type};
     use crate::{Environment, InMemoryValueStore, Value};
     use crate::analyzer::Sem;
+    use crate::analyzer::Sem::ValueList;
     use crate::function_resolver::{FuncMatcher, FunctionResolver};
     use crate::functions::SpecialFunctions;
     use crate::functions::get_coercions;
@@ -320,6 +331,67 @@ mod test {
             Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1) }),
         ], true), "Should match with coercion");
 
+    }
+
+    #[test]
+    fn test_generics() {
+        let mut env = Environment::new(Box::new(InMemoryValueStore::create()));
+        for f in get_coercions() {
+            env.put_function(f)
+        }
+
+        let my_fn = Function::create(
+            "my_func",
+            Signature {
+                value: Type::generic("A"),
+                arguments: vec![Type::list_of(Type::generic("A")), Type::generic("A")],
+                resource_type: None
+            },
+            |args| {
+                Box::new(Value::ValueString { val : String::from("")})
+            }
+        );
+        env.put_function(my_fn.clone());
+
+        let mut func_resolver = FunctionResolver {
+            env: &env,
+            name: "".to_string(),
+            arg_sems: &vec![]
+        };
+
+        let result = FuncMatcher::try_match(
+            &func_resolver,
+            &my_fn,
+            &vec![
+                Sem::ValueList(
+                    vec![
+                        Sem::ValueFractional(Value::ValueFractional { val : BigDecimal::from(1)}),
+                        Sem::ValueFractional(Value::ValueFractional { val : BigDecimal::from(1)}),
+                    ]
+                ),
+                Sem::ValueFractional(Value::ValueFractional { val : BigDecimal::from(1)}),
+            ],
+            false);
+
+        match result {
+            None => {
+                assert_eq!(1, 2, "Expected (List<A>,A) =~ (List<Frac>,Frac)")
+            }
+            Some(s) => {
+                match s {
+                    Sem::FnCall(f, arg_sems) => {
+                        assert_eq!(2, arg_sems.len());
+                        assert_eq!(2, f.sig().arguments.len());
+                        assert_eq!(&Type::list_of(Type::Fractional),
+                                   f.sig().arguments.get(0).unwrap());
+                        assert_eq!(Type::Fractional, f.sig().value);
+                    }
+                    _ => {
+                        assert_eq!(1, 2, "Expected (List<A>,A) =~ (List<Frac>,Frac)")
+                    }
+                }
+            }
+        }
     }
 
     #[test]
