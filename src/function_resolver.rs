@@ -1,10 +1,12 @@
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 use crate::analyzer::{Sem, Typed};
 use crate::Environment;
 use crate::external_resources::IOResource;
 use crate::functions::SpecialFunctions;
 use crate::types::{Function, Type};
 
+#[derive(Debug)]
 pub struct FunctionResolver<'a> {
     env : &'a Environment,
     name : String,
@@ -87,6 +89,7 @@ impl FunctionResolver<'_> {
     }
 }
 
+#[derive(Debug)]
 struct FuncMatcher<'a> {
     func_resolver : &'a FunctionResolver<'a>,
     func : &'a Function,

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter, Write};
 use crate::analyzer::{Sem};
 use crate::external_resources::IOResource;
 use crate::function_resolver::FunctionResolver;
@@ -10,6 +11,12 @@ use crate::values::{Value};
 pub struct Environment {
     value_store : Box<dyn ValueStore>,
     functions : HashMap<String, Vec<Function>>,
+}
+
+impl Debug for Environment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Environment")
+    }
 }
 
 impl Environment {

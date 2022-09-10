@@ -36,12 +36,12 @@ impl FileFunctions {
                 panic!("")
             })
     }
-    
+
     pub fn fn_write() -> Function {
         Function::create("write", Signature {
             value: Type::Void,
             arguments: vec![Type::String],
-            resource_type: None
+            resource_type: Some(BuiltInResources::file_resource_type()),
         },|args : FunctionArgs | {
             if let Some(IOResource { id : filename, .. }) = &args.res {
                 if let Value::ValueString { val } = &args.get_unchecked(0) {
@@ -59,7 +59,7 @@ impl FileFunctions {
             panic!("")
         })
     }
-    
+
 }
 
 

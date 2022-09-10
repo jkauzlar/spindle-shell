@@ -15,10 +15,12 @@ impl ToString for IOResource {
     fn to_string(&self) -> String {
         let mut buf = String::new();
         buf.push('#');
-        buf.push_str(self.id.as_str());
-        buf.push('[');
+        buf.push('<');
         buf.push_str(self.resource_type.id.as_str());
-        buf.push(']');
+        buf.push('>');
+        buf.push('(');
+        buf.push_str(self.id.as_str());
+        buf.push(')');
         if !self.properties.is_empty() {
             buf.push('{');
             let mut first = true;

@@ -368,7 +368,7 @@ impl Display for Pipe {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug,Clone)]
 pub enum Sem {
     FnCall(Function, Option<IOResource>, Vec<Sem>),
     ValueCarry(Type),

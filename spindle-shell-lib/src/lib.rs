@@ -43,7 +43,7 @@ impl Shell {
     pub fn run(&mut self) -> Result<(), ShellError> {
         let mut stdout = io::stdout();
         execute!(stdout, EnterAlternateScreen);
-        terminal::enable_raw_mode();
+        // terminal::enable_raw_mode();
         let mut exit_shell = false;
 
         while !exit_shell {
