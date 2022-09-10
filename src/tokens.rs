@@ -3,7 +3,6 @@ use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use bigdecimal::{BigDecimal, ParseBigDecimalError};
 use num_bigint::{BigInt, ParseBigIntError};
-use reqwest::Url;
 use crate::Value;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -13,11 +12,13 @@ pub enum Token {
     Integral(Value),        // ([0-9]+)
     Fractional(Value),      // ([0-9]+'.'[0-9]*')
     Time(Value),            // TODO
-    Url(Value),             // '@'([\W]+)
     EndOfStatement,         // ';'
+    FileResource(String),   // @[^ ]+
+    HttpResource(String),   // @http(s)?://[^ ]+
     LeftParens,             // '('
     RightParens,            // ')'
-    Identifier(String),     // ([A-Za-z_\.][A-Za-z0-9_\.]+)
+    ThreePeriods,           // '...'
+    Identifier(String),     // ((\.)?[A-Za-z0-9_]+)+
     Equals,                 // '=='
     NotEquals,              // '!='
     GreaterThan,            // '>'
@@ -40,6 +41,7 @@ pub enum Token {
     RightCurleyBrace,       // '}'
     Comma,                  // ','
     Colon,                  // ':'
+    QuestionMark,           // '?'
     Variable(String),       // '$'(Identifier)
 }
 
@@ -74,16 +76,6 @@ impl Token {
         Token::Boolean(Value::ValueBoolean { val : b } )
     }
 
-    pub fn new_url(uri_str : String) -> Result<Token, ScannerError> {
-        match Url::parse(uri_str.as_str()) {
-            Ok(url) => {
-                Ok(Token::Url(Value::ValueUrl { val : url }))
-            }
-            Err(err) => {
-                Err(ScannerError::new(err.to_string().as_str()))
-            }
-        }
-    }
 
     pub(crate) fn get_string_rep(&self) -> String {
         match self {
@@ -91,7 +83,6 @@ impl Token {
             Token::Integral(val) => { val.to_string()}
             Token::Fractional(val) => { val.to_string()}
             Token::Boolean(val) => { val.to_string()}
-            Token::Url(val) => {val.to_string()}
             Token::Time(val ) => { val.to_string()}
             Token::EndOfStatement => { String::from(";") }
             Token::LeftParens => { String::from("(")}
@@ -120,6 +111,10 @@ impl Token {
             Token::LeftSetter => {String::from("<-")}
             Token::RightSetter => { String::from("->")}
             Token::Variable(val) => {format!("${}", val.as_str()) }
+            Token::ThreePeriods => { String::from("...")}
+            Token::FileResource(val) => { format!("@{}", val)}
+            Token::HttpResource(val) => { format!("@{}", val)}
+            Token::QuestionMark => { String::from("?")}
         }
     }
 }
@@ -139,6 +134,7 @@ pub enum TokenType {
     UnaryOp,
     BinaryOp,
     BooleanOp,
+    Resource,
     Other,
 }
 
@@ -157,7 +153,6 @@ impl EnumTypedVariant<TokenType> for Token {
             Token::Integral(_) => { vec![TokenType::Value]}
             Token::Fractional(_) => { vec![TokenType::Value]}
             Token::Boolean(_) => { vec![TokenType::Value]}
-            Token::Url(_) => { vec![TokenType::Value]}
             Token::Time(_) => { vec![TokenType::Value]}
             Token::Identifier(_) => { vec![TokenType::Identifer]}
             Token::Variable(_) => { vec![TokenType::Variable]}
@@ -175,6 +170,8 @@ impl EnumTypedVariant<TokenType> for Token {
             Token::PullPipe => {vec![TokenType::Pipe]}
             Token::PushPipe => {vec![TokenType::Pipe]}
             Token::StreamPipe => {vec![TokenType::Pipe]}
+            Token::HttpResource(_) => {vec![TokenType::Resource]}
+            Token::FileResource(_) => {vec![TokenType::Resource]}
             _ => vec![TokenType::Other]
         }
     }

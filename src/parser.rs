@@ -1,13 +1,18 @@
+use std::collections::HashMap;
 use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Write};
+use crate::external_resources::{BuiltInResources, IOResource, ResourceInstantiationError, ResourceType};
 use crate::parser::Expr::{Pipeline, Setter};
 use crate::tokens::{Token, EnumTypedVariant, TokenType};
 use crate::values::{Value};
 
+/// ## Grammar
+///
 /// ```text
 /// EXECUTABLE  := SETTER (';' SETTER)+
 /// SETTER      := identifier '<-' PIPELINE | PIPELINE ('->' identifier)?
-/// PIPELINE    := EXPR (pipe EXPR)+
+/// PIPELINE    := FN_RESOURCE (pipe FN_RESOURCE)+
+/// FN_RESOURCE := EXPR | resource
 /// EXPR        := EQUALITY
 /// EQUALITY    := COMPARISON ( EQUALITY_OP COMPARISON)?
 /// COMPARISON  := SUM (BOOLEAN_OP SUM)?
@@ -17,7 +22,7 @@ use crate::values::{Value};
 /// FNCALL      := identifier (PROPERTY)* | PROPERTY
 /// PROP_SET    := '{' PROPERTY (',' PROPERTY)* '}' | PROPERTY
 /// PROPERTY    := identifier ':' VALUE | VALUE
-/// VALUE       := scalar | variable | '[' EXPR (',' EXPR)* ']' | '(' EXPR ')'
+/// VALUE       := scalar | variable | resource | '[' EXPR (',' EXPR)* ']' | '(' EXPR ')'
 ///```
 
 pub struct Parser {
@@ -134,6 +139,19 @@ impl Parser {
                 Err(err)
             }
         }
+    }
+
+    fn parse_fn_resource(&mut self) -> Result<Expr, ParserError> {
+        if let Some(tkn) = self.peek() {
+            if tkn.has_type(&TokenType::Resource) {
+                if let Expr::ValueResource(res) = self.match_resource()? {
+                    return Ok(Expr::FnResource(res));
+                } else {
+                    return Err(self.unexpected_token_error("in parse_fn_resource"));
+                }
+            }
+        }
+        self.parse_expr()
     }
 
     fn parse_expr(&mut self) -> Result<Expr, ParserError> {
@@ -265,8 +283,7 @@ impl Parser {
         if self.check_current(&Token::LeftCurleyBrace) {
             self.pop();
             let prop = self.parse_property()?;
-            let mut prop_vec = vec!();
-            prop_vec.push(prop);
+            let mut prop_vec = vec![prop];
             while self.check_current(&Token::Comma) {
                 self.pop();
                 prop_vec.push(self.parse_property()?);
@@ -330,6 +347,8 @@ impl Parser {
                         }
                     }
                 }
+            } else if local_tkn.has_type(&TokenType::Resource) {
+                return self.match_resource();
             } else if local_tkn.has_type(&TokenType::Variable) {
                 return match self.pop() {
                     Token::Variable(id) => {
@@ -381,16 +400,45 @@ impl Parser {
                     Token::Boolean(v) => {
                         Ok(Expr::ValueBoolean(v))
                     }
-                    Token::Url(v) => {
-                        Ok(Expr::ValueUrl(v))
-                    }
                     _ => {
                         Err(ParserError::new("unsupported value type!"))
                     }
                 }
             }
         }
-        return Err(ParserError::new("end of parse_value with no result"))
+        Err(ParserError::new("end of parse_value with no result"))
+    }
+
+    /// make sure current token is a resource token before calling
+    fn match_resource(&mut self) -> Result<Expr, ParserError>  {
+        return match self.pop() {
+            Token::HttpResource(url) => {
+                match BuiltInResources::http_resource_type()
+                    .new_instance(url.as_str(), HashMap::default()) {
+                    Ok(res) => {
+                        Ok(Expr::ValueResource(res))
+                    }
+                    Err(err) => {
+                        Err(ParserError::new(err.to_string().as_str()))
+                    }
+                }
+            }
+            Token::FileResource(path) => {
+                match BuiltInResources::file_resource_type()
+                    .new_instance(path.as_str(), HashMap::default()) {
+                    Ok(res) => {
+                        Ok(Expr::ValueResource(res))
+                    }
+                    Err(err) => {
+                        Err(ParserError::new(err.to_string().as_str()))
+                    }
+                }
+            }
+            _ => {
+                Err(self.unexpected_token_error(
+                    "Impossible! already tested for TokenType::Resource, but not a TokenType::Resource!"))
+            }
+        }
     }
 
     fn has_more(&self) -> bool {
@@ -400,7 +448,7 @@ impl Parser {
     fn pop(&mut self) -> Token {
         if let Some(next) = self.peek() {
             let local_token = next.clone();
-            self.idx = self.idx + 1;
+            self.idx += 1;
             return local_token;
         }
         panic!("Always check if peek exists before calling pop()!")
@@ -433,11 +481,11 @@ impl Parser {
     }
 
     fn peek(&self) -> Option<&Token> {
-        self.tkns.get(self.idx).clone()
+        self.tkns.get(self.idx)
     }
 
     fn lookahead(&self) -> Option<&Token> {
-        self.tkns.get(self.idx + 1).clone()
+        self.tkns.get(self.idx + 1)
     }
 
     fn unexpected_token_error(&self, marker : &str) -> ParserError {
@@ -473,6 +521,7 @@ pub enum Expr {
     Setter(String, Box<Expr>),
     Pipeline(Box<Expr>, Token, Box<Expr>),
     FnCall(String, Vec<Expr>),
+    FnResource(IOResource),
     Binary(Token, Box<Expr>, Box<Expr>),
     Unary(Token, Box<Expr>),
     VariableReference(String),
@@ -480,10 +529,10 @@ pub enum Expr {
     ValueFractional(Value),
     ValueString(Value),
     ValueBoolean(Value),
-    ValueUrl(Value),
     ValueList(Vec<Expr>),
     ValueProperty(String, Box<Expr>),
     ValuePropertySet(Vec<Expr>),
+    ValueResource(IOResource),
 }
 
 impl Display for Expr {
@@ -526,9 +575,6 @@ impl Display for Expr {
             Expr::ValueBoolean(v) => {
                 f.write_str(v.to_string().as_str())
             }
-            Expr::ValueUrl(v) => {
-                f.write_str(v.to_string().as_str())
-            }
             Expr::ValueList(exprs) => {
                 let mut buf = String::new();
                 buf.push('[');
@@ -561,6 +607,12 @@ impl Display for Expr {
                 }
                 buf.push('}');
                 f.write_str(buf.as_str())
+            }
+            Expr::ValueResource(res) => {
+                f.write_str(res.to_string().as_str())
+            }
+            Expr::FnResource(res) => {
+                f.write_str(format!("fn({})", res.to_string()).as_str())
             }
         }
     }

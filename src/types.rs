@@ -1,9 +1,10 @@
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter, Write};
+use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
 
 use crate::analyzer::TypeError;
-use crate::external_resources::{ExternalResource, ResourceType};
+use crate::evaluator::EvaluationError;
+use crate::external_resources::{IOResource, ResourceType};
 use crate::types::Type::Property;
 use crate::values::Value;
 
@@ -14,8 +15,7 @@ pub enum Type {
     Fractional,
     Boolean,
     Time,
-    URL,
-    Resource,
+    Resource(String),
     List(Box<Type>),
     Property(String,Box<Type>),
     PropertySet(Vec<Type>), // arguments must be properties
@@ -23,6 +23,7 @@ pub enum Type {
     Generic(String),
     /// Signature type only; not a Value type
     VarArgs(Box<Type>),
+    Void,
 }
 
 impl Type {
@@ -127,12 +128,10 @@ impl Type {
             }
 
             Some(concrete_type_map)
+        } else if self.eq(other_type) {
+            Some(concrete_type_map)
         } else {
-            if self.eq(other_type) {
-                Some(concrete_type_map)
-            } else {
-                None
-            }
+            None
         }
     }
 
@@ -159,8 +158,8 @@ impl Type {
             Type::VarArgs(t) => {
                 Type::VarArgs(Box::new(t.reify_generics(concrete_types)))
             }
-            matched @ _ => {
-                matched.clone()
+            matched => {
+                matched
             }
         }
     }
@@ -197,7 +196,7 @@ impl Type {
                         }
                     }
                 }
-                return None;
+                None
             }
             _ => {
                 panic!("Not a property set!")
@@ -237,10 +236,52 @@ impl Display for Signature {
 }
 
 #[derive(Clone)]
+pub struct FunctionArgs {
+    pub res : Option<IOResource>,
+    pub vals : Vec<Value>,
+}
+
+impl FunctionArgs {
+    pub fn new(vals : Vec<Value>) -> Self {
+        FunctionArgs {
+            res : None,
+            vals,
+        }
+    }
+
+    pub fn with_resource(&mut self, res : IOResource) -> Self {
+        self.res = Some(res);
+        self.clone()
+    }
+
+    pub fn get_unchecked(&self, idx : usize) -> &Value {
+        match self.vals.get(idx) {
+            None => {
+                panic!()
+            }
+            Some(v) => {
+                v
+            }
+        }
+    }
+
+    pub fn get(&self, idx: usize) -> Option<&Value> {
+        self.vals.get(idx)
+    }
+
+    pub fn has_resource(&self, res_type : &ResourceType) -> bool {
+        if let Some(res) = &self.res {
+            return res.resource_type.eq(res_type);
+        }
+        false
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Function {
     name : String,
     sig : Signature,
-    f : fn(Vec<Value>) -> Box<Value>,
+    f : fn(FunctionArgs) -> Result<Value,EvaluationError>,
 }
 
 impl Function {
@@ -249,7 +290,7 @@ impl Function {
         Function {
             name: self.name.clone(),
             sig: Signature {
-                value: self.sig.value.reify_generics(concrete_types).clone(),
+                value: self.sig.value.reify_generics(concrete_types),
                 arguments: self.sig.arguments.clone()
                     .iter()
                     .map(|t| t.reify_generics(concrete_types))
@@ -265,24 +306,30 @@ impl Function {
 pub struct FunctionCall {
     func : Function,
     args : Vec<Value>,
-    resource : Option<ExternalResource>
+    resource : Option<IOResource>
 }
 
 impl FunctionCall {
 
-    pub fn set_resource(&mut self, res : ExternalResource) {
+    pub fn with_resource(&mut self, res : IOResource) -> FunctionCall {
         self.resource = Some(res);
+        self.clone()
     }
 
-    pub fn run(&self) -> Box<Value> {
-        self.func.call(self.args.clone())
+    pub fn run(&self) -> Result<Value, EvaluationError> {
+        let mut args = FunctionArgs::new(self.args.clone());
+        if let Some(res) = &self.resource {
+            args = args.with_resource(res.clone())
+        }
+
+        self.func.call(args)
     }
 }
 
 
 impl Function {
 
-    pub fn create(name : &str, sig : Signature, f : fn(Vec<Value>) -> Box<Value>) -> Function {
+    pub fn create(name : &str, sig : Signature, f : fn(FunctionArgs) -> Result<Value, EvaluationError>) -> Function {
         Function {
             name: String::from(name),
             sig,
@@ -310,7 +357,7 @@ impl Function {
         &self.sig.value
     }
 
-    pub fn call(&self, args : Vec<Value>) -> Box<Value> {
+    pub fn call(&self, args : FunctionArgs) -> Result<Value, EvaluationError> {
         (self.f)(args)
     }
 
@@ -318,7 +365,7 @@ impl Function {
 
 impl Display for Function {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(format!("{}:{}", self.name, self.sig.to_string()).as_str())
+        f.write_str(format!("{}:{}", self.name, self.sig).as_str())
     }
 }
 
@@ -340,14 +387,11 @@ impl Display for Type {
             Type::Time => {
                 f.write_str("Time")
             }
-            Type::URL => {
-                f.write_str("URL")
-            }
-            Type::Resource => {
-                f.write_str("Resource")
+            Type::Resource(t) => {
+                f.write_str(format!("Resource({})", t).as_str())
             }
             Type::List(t) => {
-                f.write_str(format!("List({})", t.to_string()).as_str())
+                f.write_str(format!("List({})", t).as_str())
             }
 
             Type::Generic(t) => {
@@ -355,10 +399,10 @@ impl Display for Type {
             }
 
             Type::VarArgs(t) => {
-                f.write_str(format!("({})*", t.to_string()).as_str())
+                f.write_str(format!("({})*", t).as_str())
             }
             Type::Property(name, t) => {
-                f.write_str(format!("Prop({}:{})", name, t.to_string()).as_str())
+                f.write_str(format!("Prop({}:{})", name, t).as_str())
             }
             Type::PropertySet(props) => {
                 let mut buf = String::new();
@@ -375,6 +419,9 @@ impl Display for Type {
 
                 buf.push(')');
                 f.write_str(buf.as_str())
+            }
+            Type::Void => {
+                f.write_str("Void")
             }
         }
     }
@@ -415,7 +462,9 @@ impl TypeReader {
     fn read_type(&mut self) -> Result<Type, TypeError> {
         let mut t : Option<Type> = None;
         let type_name = self.read_type_name();
-        if type_name.eq(&String::from("String")) {
+        if type_name.eq(&String::from("Void")) {
+            t = Some(Type::Void)
+        } else if type_name.eq(&String::from("String")) {
             t = Some(Type::String)
         } else if type_name.eq(&String::from("Integral")) {
             t = Some(Type::Integral)
@@ -425,14 +474,13 @@ impl TypeReader {
             t = Some(Type::Boolean)
         } else if type_name.eq(&String::from("Time")) {
             t = Some(Type::Time)
-        } else if type_name.eq(&String::from("URL")) {
-            t = Some(Type::URL)
         } else if type_name.eq(&String::from("Resource")) {
-            t = Some(Type::Resource)
+            let res_type = self.read_resource_type()?;
+            t = Some(Type::Resource(res_type))
         } else if type_name.eq(&String::from("Prop")) {
             if self.read_char('(') {
                 let prop_name = self.read_identifier();
-                if prop_name.len() > 0 && self.read_char(':') {
+                if !prop_name.is_empty() && self.read_char(':') {
                     let prop_type = self.read_type()?;
                     if self.read_char(')') {
                         t = Some(Type::Property(prop_name, Box::new(prop_type)));
@@ -443,7 +491,7 @@ impl TypeReader {
             let sts = self.read_sub_types()?;
             t = Some(Type::PropertySet(sts));
         } else if type_name.eq(&String::from("List")) {
-            let sts = self.read_sub_types()?;
+            let sts : Vec<Type> = self.read_sub_types()?;
             if let Some(st) = sts.get(0) {
                 t = Some(Type::List(Box::new(st.clone())));
             } else {
@@ -460,6 +508,24 @@ impl TypeReader {
             }
             Some(t) => {
                 Ok(t)
+            }
+        }
+    }
+
+    fn read_resource_type(&mut self) -> Result<String, TypeError> {
+        if !self.read_char('(') {
+            Err(TypeError::new(
+                format!("Opening parenthesis expected after resource type in input [{}]",
+                        self.type_str).as_str()))
+        } else {
+            let res_type = self.read_identifier();
+
+            if !self.read_char(')') {
+                Err(TypeError::new(
+                    format!("Closing parenthesis expected after resource type in input [{}]",
+                            self.type_str).as_str()))
+            } else {
+                Ok(res_type)
             }
         }
     }
@@ -505,7 +571,7 @@ impl TypeReader {
                 Some(&c) => {
                     if c.is_alphabetic() {
                         type_buf.push(c);
-                        self.pos = self.pos + 1;
+                        self.pos += 1;
                     } else {
                         break;
                     }
@@ -530,7 +596,7 @@ impl TypeReader {
             }
             Some(&c) => {
                 if expected == c {
-                    self.pos = self.pos + 1;
+                    self.pos += 1;
                     true
                 } else {
                     false
@@ -546,7 +612,7 @@ impl TypeReader {
                 Some(&c) => {
                     if c.is_alphabetic() || c.is_digit(10) || c == '_' || c =='.' {
                         type_buf.push(c);
-                        self.pos = self.pos + 1;
+                        self.pos += 1;
                     } else {
                         break;
                     }
@@ -574,9 +640,9 @@ mod tests {
         assert_type("Fractional", Type::Fractional);
         assert_type("Boolean", Type::Boolean);
         assert_type("Time", Type::Time);
-        assert_type("URL", Type::URL);
-        assert_type("Resource", Type::Resource);
+        assert_type("Resource(file)", Type::Resource(String::from("file")));
         assert_type("List(String)", Type::List(Box::new(Type::String)));
+        assert_type("Void", Type::Void);
         assert_type("Prop(my_prop:String)", Type::Property(
             String::from("my_prop"),Box::new(Type::String)));
         assert_type("PropertySet(Prop(first_prop:String),Prop(second_prop:Integral),Prop(third_prop:Fractional))",
@@ -611,7 +677,7 @@ mod tests {
             None => {
                 // expected
             }
-            Some(mappings) => {
+            Some(_mappings) => {
                 assert_eq!(1, 2, "List(A) !~ String")
             }
         }
@@ -653,7 +719,7 @@ mod tests {
                 resource_type: None
             },
             |args| {
-                Box::new(Value::ValueString { val : String::from("")})
+                Ok(Value::ValueString { val : String::from("")})
             }
         );
         let mut type_hash : HashMap<String, Type> = HashMap::new();

@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use crate::analyzer::{Sem, SemanticExpression, Typed};
 use crate::Environment;
-use crate::types::Type;
+use crate::types::{FunctionArgs, Type};
 use crate::Value::{ValueProperty, ValuePropertySet};
 use crate::values::{Value, ValueReader};
 
@@ -41,33 +41,37 @@ impl Evaluator<'_> {
         }
     }
 
-    fn eval_sem(&mut self, sem : &Box<Sem>, carry_val : Option<Value>) -> Result<Value, EvaluationError> {
-        let sem : Sem = *sem.clone();
+    fn eval_sem(&mut self, sem : &Sem, carry_val : Option<Value>) -> Result<Value, EvaluationError> {
+        let sem : Sem = sem.clone();
         match sem {
-            Sem::FnCall(func, args) => {
+            Sem::Void => {
+                Ok(Value::ValueVoid)
+            }
+            Sem::FnCall(func, res, args) => {
                 let mut arg_vals : Vec<Value> = vec!();
                 for arg in args {
                     arg_vals.push(self.eval_sem(&Box::new(arg.clone()), carry_val.clone())?)
                 }
-                Ok(*func.create_call(arg_vals).run())
+                let mut fcall = func.create_call(arg_vals);
+                if let Some(res) = res {
+                    fcall = fcall.with_resource(res)
+                }
+                fcall.run()
             }
             Sem::ValueIntegral(v) => {
-                Ok(v.clone())
+                Ok(v)
             }
             Sem::ValueFractional(v ) => {
-                Ok(v.clone())
+                Ok(v)
             }
             Sem::ValueString(v) => {
-                Ok(v.clone())
-            }
-            Sem::ValueUrl(v) => {
-                Ok(v.clone())
+                Ok(v)
             }
             Sem::ValueBoolean(v) => {
-                Ok(v.clone())
+                Ok(v)
             }
             Sem::ValueTime(v) => {
-                Ok(v.clone())
+                Ok(v)
             }
             Sem::Variable(id, sem) => {
                 self.eval_sem(&sem, carry_val.clone())
@@ -75,7 +79,7 @@ impl Evaluator<'_> {
             Sem::ValueProperty(id, sem) => {
                 let v = self.eval_sem(&sem, carry_val.clone())?;
                 Ok(ValueProperty {
-                    name: id.clone(),
+                    name: id,
                     val: Box::new(v),
                 })
             }
@@ -87,7 +91,7 @@ impl Evaluator<'_> {
                 Ok(ValuePropertySet { vals })
             }
             Sem::ValueList(sem_vec) => {
-                if sem_vec.len() == 0 {
+                if sem_vec.is_empty() {
                     return Err(EvaluationError::new("List cannot be empty"));
                 }
                 let mut vals = vec!();
@@ -123,6 +127,10 @@ impl Evaluator<'_> {
                         Ok(v)
                     }
                 }
+            }
+            Sem::ValueResource(_) => {
+                // todo interpret resource as function
+                Ok(Value::ValueString { val : String::from("")})
             }
         }
     }

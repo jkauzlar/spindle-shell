@@ -1,6 +1,4 @@
 #![allow(unused_results)]
-extern crate core;
-
 use std::io::{Error, Stdout};
 use crossterm::{QueueableCommand, style};
 use crossterm::style::{Print, Stylize};
@@ -11,6 +9,7 @@ use spindle_shell_lib::{Shell, ShellApplicationEnvironment, ShellCommand, ShellD
 use crate::analyzer::{SemanticAnalyzer};
 use crate::environment::Environment;
 use crate::evaluator::{Evaluator};
+use crate::file_functions::FileFunctions;
 use crate::functions::{get_builtins, get_coercions};
 
 use crate::parser::{Parser};
@@ -31,6 +30,7 @@ mod external_resources;
 mod tokens;
 mod values_display;
 mod function_resolver;
+mod file_functions;
 
 struct App {
     env : Box<Environment>
@@ -249,13 +249,9 @@ fn main() {
         env: Box::new(Environment::new(Box::new(InMemoryValueStore::create())))
     };
 
-    for func in get_builtins() {
-        app.env.put_function(func);
-    }
-
-    for func in get_coercions() {
-        app.env.put_function(func);
-    }
+    app.env.put_functions(get_builtins());
+    app.env.put_functions(get_coercions());
+    app.env.put_functions(FileFunctions::get_file_functions());
 
     Shell::new(Box::new(app)).run();
 }

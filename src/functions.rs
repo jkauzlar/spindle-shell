@@ -3,7 +3,7 @@ use std::str::FromStr;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use num_bigint::BigInt;
 use regex::{Regex};
-use crate::types::{Function, Signature, Type};
+use crate::types::{Function, FunctionArgs, Signature, Type};
 use crate::Value::ValueString;
 use crate::values::{Value};
 
@@ -17,10 +17,10 @@ macro_rules! create_cmp_fn {
                 arguments : vec![Type::$typ, Type::$typ],
                 resource_type: None,
             },
-            |args| {
-                if let Value::$val_name { val : arg0 } = args.get(0).unwrap() {
-                    if let Value::$val_name { val : arg1 } = args.get(1).unwrap() {
-                        return Box::new(Value::ValueBoolean { val : arg0.cmp(arg1).$cmp_fn() });
+            |args : FunctionArgs| {
+                if let Value::$val_name { val : arg0 } = args.get_unchecked(0) {
+                    if let Value::$val_name { val : arg1 } = args.get_unchecked(1) {
+                        return Ok(Value::ValueBoolean { val : *(&arg0.cmp(&arg1).$cmp_fn()) });
                     }
                 }
                 panic!("");
@@ -39,9 +39,9 @@ macro_rules! create_binary_endo_fn {
                 resource_type: None,
             },
             |args| {
-                if let Value::$val_name { val : arg0 } = args.get(0).unwrap() {
-                    if let Value::$val_name { val : arg1 } = args.get(1).unwrap() {
-                        return Box::new(Value::$val_name { val : $($stuff)+(arg0, arg1)})
+                if let Value::$val_name { val : arg0 } = args.get_unchecked(0) {
+                    if let Value::$val_name { val : arg1 } = args.get_unchecked(1) {
+                        return Ok(Value::$val_name { val : $($stuff)+(&arg0, &arg1)})
                     }
                 }
                 panic!("")
@@ -60,8 +60,8 @@ macro_rules! create_unary_endo_fn {
                 resource_type: None,
             },
             |args| {
-                if let Value::$val_name { val : arg0 } = args.get(0).unwrap() {
-                    return Box::new(Value::$val_name { val : $($stuff)+(arg0)})
+                if let Value::$val_name { val : arg0 } = args.get_unchecked(0) {
+                    return Ok(Value::$val_name { val : $($stuff)+(&arg0)})
                 }
                 panic!("")
             }
@@ -80,8 +80,8 @@ impl SpecialFunctions {
                 arguments: vec![Type::Generic(String::from("T"))],
                 resource_type: None
             },
-            |args : Vec<Value>| {
-                return Box::new(args.get(0).unwrap().clone())
+            |args : FunctionArgs| {
+                Ok((*args.get_unchecked(0)).clone())
             }
         )
     }
@@ -101,10 +101,10 @@ pub fn get_coercions() -> Vec<Function> {
             arguments : vec![Type::Integral],
             resource_type: None,
         },
-       |args : Vec<Value> | {
-           if let Value::ValueIntegral { val : arg0 } = args.get(0).unwrap() {
-               let result = BigDecimal::from_str(arg0.to_string().as_str()).unwrap();
-               return Box::new(Value::ValueFractional { val : result });
+       |args : FunctionArgs | {
+           if let Value::ValueIntegral { val } = args.get_unchecked(0) {
+               let result = BigDecimal::from_str(val.to_string().as_str()).unwrap();
+               return Ok(Value::ValueFractional { val : result });
            }
            panic!("");
        }
@@ -117,9 +117,9 @@ pub fn get_coercions() -> Vec<Function> {
             arguments: vec![Type::Integral],
             resource_type: None,
         },
-        |args : Vec<Value> | {
-            if let Value::ValueIntegral { val : arg0 } = args.get(0).unwrap() {
-                return Box::new(Value::ValueString { val : arg0.to_string() });
+        |args : FunctionArgs | {
+            if let Value::ValueIntegral { val : arg0 } = args.get_unchecked(0) {
+                return Ok(Value::ValueString { val : arg0.to_string() });
             }
             panic!("");
         }
@@ -132,9 +132,9 @@ pub fn get_coercions() -> Vec<Function> {
             arguments: vec![Type::Fractional],
             resource_type: None,
         },
-        |args : Vec<Value> | {
-            if let Value::ValueFractional { val : arg0 } = args.get(0).unwrap() {
-                return Box::new(Value::ValueString { val : arg0.to_string() });
+        |args : FunctionArgs | {
+            if let Value::ValueFractional { val : arg0 } = args.get_unchecked(0) {
+                return Ok(Value::ValueString { val : arg0.to_string() });
             }
             panic!("");
         }
@@ -196,9 +196,9 @@ pub fn get_builtins() -> Vec<Function> {
             arguments: vec![Type::String],
             resource_type: None,
         },
-        |args : Vec<Value> | {
-            if let Value::ValueString { val } = args.get(0).unwrap() {
-                return Box::new(Value::ValueString {
+        |args : FunctionArgs | {
+            if let Value::ValueString { val } = args.get_unchecked(0) {
+                return Ok(Value::ValueString {
                     val: String::from(val.trim())
                 });
             }
@@ -213,13 +213,13 @@ pub fn get_builtins() -> Vec<Function> {
             arguments: vec![Type::String, Type::VarArgs(Box::new(Type::String))],
             resource_type: None
         },
-        |args | {
-            if let Value::ValueString { val : target} = args.get(0).unwrap() {
+        |args : FunctionArgs | {
+            if let Value::ValueString { val : target} = args.get_unchecked(0) {
                 let mut interp_vals: Vec<&str> = vec!();
                 let mut idx = 1;
-                while let Some(Value::ValueString { val : arg }) = args.get(idx) {
-                    interp_vals.push(arg);
-                    idx = idx + 1;
+                while let Value::ValueString { val : arg } = args.get_unchecked(idx) {
+                    interp_vals.push(arg.as_str());
+                    idx += 1;
                 }
 
                 let mut result = String::from(target);
@@ -239,13 +239,13 @@ pub fn get_builtins() -> Vec<Function> {
                                 }
                                 Some(&replacement) => {
                                     result.replace_range(m.start() .. m.end(), replacement);
-                                    idx = idx + 1;
+                                    idx += 1;
                                 }
                             }
                         }
                     }
                 }
-                return Box::new(ValueString { val: result });
+                return Ok(ValueString { val: result });
             }
            panic!("")
        }

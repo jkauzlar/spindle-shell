@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use crate::analyzer::{Sem, Typed};
 use crate::Environment;
+use crate::external_resources::IOResource;
 use crate::functions::SpecialFunctions;
 use crate::types::{Function, Type};
 
@@ -8,30 +9,44 @@ pub struct FunctionResolver<'a> {
     env : &'a Environment,
     name : String,
     arg_sems : &'a Vec<Sem>,
+    res : Option<IOResource>,
 }
 
 impl FunctionResolver<'_> {
     pub fn resolve(env : &Environment, name : &String, arg_sems : &Vec<Sem>) -> Option<Sem> {
+
         FunctionResolver {
             env,
             name : name.clone(),
             arg_sems,
+            res : None,
         }.find_function()
     }
+
+    pub fn resolve_with_resource(env : &Environment, name : &String, arg_sems : &Vec<Sem>, res : IOResource) -> Option<Sem> {
+
+        FunctionResolver {
+            env,
+            name : name.clone(),
+            arg_sems,
+            res : Some(res),
+        }.find_function()
+    }
+
 
     fn find_function(&mut self) -> Option<Sem> {
         let funcs = self.env.get_funcs(self.name.as_str())?;
 
         // try without coercions
         for f in funcs {
-            if let Some(sem) = FuncMatcher::try_match(self, f, &self.arg_sems, false) {
+            if let Some(sem) = FuncMatcher::try_match(self, f, false) {
                 return Some(sem);
             }
         }
 
         // try with coercions
         for f in funcs {
-            if let Some(sem) = FuncMatcher::try_match(self, f, &self.arg_sems, true) {
+            if let Some(sem) = FuncMatcher::try_match(self, f, true) {
                 return Some(sem);
             }
         }
@@ -86,16 +101,16 @@ struct FuncMatcher<'a> {
 
 impl FuncMatcher<'_> {
 
-    fn try_match(func_resolver : &'_ FunctionResolver<'_>, func: &Function, arg_sems: &Vec<Sem>, allow_coercions : bool) -> Option<Sem> {
+    fn try_match(func_resolver : &'_ FunctionResolver<'_>, func: &Function, allow_coercions : bool) -> Option<Sem> {
         let mut arg_types = vec![];
-        for s in arg_sems {
+        for s in func_resolver.arg_sems {
             arg_types.push(s.get_type().clone());
         }
         FuncMatcher {
             func_resolver,
             func,
             func_arg_idx : 0,
-            provided_arg_sems: arg_sems,
+            provided_arg_sems: func_resolver.arg_sems,
             provided_arg_types: arg_types,
             provided_arg_idx: 0,
             allow_coercions,
@@ -105,6 +120,21 @@ impl FuncMatcher<'_> {
     }
 
     fn run(&mut self) -> Option<Sem> {
+        // only match the function when the function requires a resource if the provided resource's type matches
+        if let Some(func_res) = &self.func.sig().resource_type {
+            if let Some(provided_res) = &self.func_resolver.res {
+                if func_res.ne(&provided_res.resource_type) {
+                    return None;
+                }
+            } else {
+                return None;
+            }
+        }
+        // if a resource was provided, then it didn't match at this point, so do not match
+        else if let Some(_) = &self.func_resolver.res {
+            return None;
+        }
+
         while self.func_arg_idx < self.func.sig().arguments.len() {
             match self.func.sig().arguments.get(self.func_arg_idx) {
                 None => {
@@ -125,6 +155,7 @@ impl FuncMatcher<'_> {
         } else {
             Some(Sem::FnCall(
                 self.func.clone().reify_types(&self.concrete_type_map),
+                self.func_resolver.res.clone(),
                 self.apply_coercions(),
             ))
         }
@@ -195,6 +226,7 @@ impl FuncMatcher<'_> {
     fn apply_coercion(&self, coercion_fn: &Function, sem: &Sem) -> Sem {
         Sem::FnCall(
             coercion_fn.clone(),
+            self.func_resolver.res.clone(),
             vec![sem.clone()],
         )
     }
@@ -216,12 +248,14 @@ impl FuncMatcher<'_> {
 
 #[cfg(test)]
 mod test {
+    use std::collections::HashMap;
     use bigdecimal::BigDecimal;
     use num_bigint::BigInt;
     use crate::types::{Function, Signature, Type};
     use crate::{Environment, InMemoryValueStore, Value};
-    use crate::analyzer::Sem;
+    use crate::analyzer::{Sem, Typed};
     use crate::analyzer::Sem::ValueList;
+    use crate::external_resources::{BuiltInResources, IOResource, ResourceType};
     use crate::function_resolver::{FuncMatcher, FunctionResolver};
     use crate::functions::SpecialFunctions;
     use crate::functions::get_coercions;
@@ -237,7 +271,8 @@ mod test {
         let resolver = FunctionResolver {
             env: &env,
             name: "".to_string(),
-            arg_sems: &vec![]
+            arg_sems: &vec![],
+            res: None
         };
 
         match resolver.find_function_with_value_type(
@@ -254,7 +289,7 @@ mod test {
         match resolver.find_function_with_value_type(
             &SpecialFunctions::coercion_fn_name(),
             &vec![Type::String],
-            &Type::URL,
+            &Type::Resource("file".to_string()),
         ) {
             None => {
                 // success
@@ -266,6 +301,146 @@ mod test {
 
 
     }
+
+    #[test]
+    fn test_resource_matches() {
+        let mut env = Environment::new(Box::new(InMemoryValueStore::create()));
+        for f in get_coercions() {
+            env.put_function(f)
+        }
+
+        let my_fn = Function::create(
+            "my_func",
+            Signature {
+                value: Type::String,
+                arguments: vec![Type::Fractional, Type::Fractional],
+                resource_type: None
+            },
+            |args| {
+                Ok(Value::str_val(""))
+            }
+        );
+
+        let my_fn2 = Function::create(
+            "my_func",
+            Signature {
+                value: Type::String,
+                arguments: vec![Type::Fractional, Type::Fractional],
+                resource_type: Some(BuiltInResources::file_resource_type())
+            },
+            |args| {
+                Ok(Value::str_val(""))
+            }
+        );
+
+        let my_fn3 = Function::create(
+            "my_func",
+            Signature {
+                value: Type::String,
+                arguments: vec![Type::Fractional, Type::Fractional],
+                resource_type: Some(BuiltInResources::http_resource_type())
+            },
+            |args| {
+                Ok(Value::str_val(""))
+            }
+        );
+
+
+        env.put_function(my_fn.clone());
+        env.put_function(my_fn2.clone());
+        env.put_function(my_fn3.clone());
+
+        let sems = &vec![
+            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
+            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
+        ];
+        let resourceOpt = Some(IOResource {
+            id: String::from("file-resource"),
+            properties: Default::default(),
+            resource_type: BuiltInResources::file_resource_type(),
+        });
+
+        // should not match function with no resource
+        match run_matcher(&my_fn, &mut env, sems, resourceOpt.clone(), false) {
+            None => {
+                // expected
+            }
+            Some(_) => { assert_eq!(my_fn, my_fn2, "my_fn<>:(Frac,Frac)->String !~ my_fn<file>:(Frac,Frac)->String") }
+        }
+        // should match
+        match run_matcher(&my_fn2, &mut env, sems, resourceOpt.clone(), false) {
+            None => { assert_eq!(1, 2, "my_fn<file>:(Frac,Frac)->String =~ my_fn<file>:(Frac,Frac)->String") }
+            Some(Sem::FnCall(f, res, args)) => {
+                assert_eq!(f.sig().resource_type, Some(BuiltInResources::file_resource_type()));
+                assert!(res.is_some());
+                assert_eq!(res.unwrap().id, String::from("file-resource"));
+            }
+            Some(unexpected) => {
+                assert_eq!(1, 2, "Unexpected match: {}", unexpected)
+            }
+        }
+        // should not match function that requires different resource type
+        match run_matcher(&my_fn3, &mut env, sems, resourceOpt.clone(), false) {
+            None => {
+                // expected
+            }
+            Some(_) => { assert_eq!(my_fn, my_fn2, "my_fn<http>:(Frac,Frac)->String !~ my_fn<file>:(Frac,Frac)->String") }
+        }
+
+    }
+
+    #[test]
+    fn test_simple_fns() {
+        let mut env = Environment::new(Box::new(InMemoryValueStore::create()));
+        for f in get_coercions() {
+            env.put_function(f)
+        }
+
+        let my_fn = Function::create(
+            "my_func",
+            Signature {
+                value: Type::String,
+                arguments: vec![Type::Fractional, Type::Fractional],
+                resource_type: None
+            },
+            |args| {
+                Ok(Value::ValueString { val : String::from("")})
+            }
+        );
+        env.put_function(my_fn.clone());
+
+        let mut func_resolver = FunctionResolver {
+            env: &env,
+            name: "".to_string(),
+            arg_sems: &vec![],
+            res: None
+        };
+
+
+        // should match
+        assert!(run_matches(&my_fn, &mut env, &vec![
+            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
+            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
+        ], false), "Should match without coercion");
+
+        // should not match
+        assert!(!run_matches(&my_fn, &mut env, &vec![
+            Sem::ValueIntegral(Value::ValueIntegral { val: BigInt::from(1u8) }),
+            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
+        ], false), "Should NOT match without coercion");
+
+        // should not match
+        assert!(!run_matches(&my_fn, &mut env, &vec![], false),
+                "Should NOT match without arguments");
+
+        // should match with coercion
+        assert!(run_matches(&my_fn, &mut env, &vec![
+            Sem::ValueIntegral(Value::ValueIntegral { val: BigInt::from(1u8) }),
+            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
+        ], true), "Test match with simple coercion");
+
+    }
+
 
     #[test]
     fn test_vararg_fns() {
@@ -282,31 +457,25 @@ mod test {
                 resource_type: None
             },
             |args| {
-                Box::new(Value::ValueString { val : String::from("")})
+                Ok(Value::ValueString { val : String::from("")})
             }
         );
         env.put_function(my_fn.clone());
 
-        let mut func_resolver = FunctionResolver {
-            env: &env,
-            name: "".to_string(),
-            arg_sems: &vec![]
-        };
-
 
         // should match
-        assert!(run_match(&my_fn, &mut func_resolver, &vec![
+        assert!(run_matches(&my_fn, &mut env, &vec![
             Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1) }),
             Sem::ValueString(Value::ValueString { val: String::from("") }),
         ], false), "Should match without coercion");
 
         // shouldn't match without arguments
-        assert!(!run_match(&my_fn, &mut func_resolver, &vec![
+        assert!(!run_matches(&my_fn, &mut env, &vec![
         ], false), "shouldn't match without arguments");
 
         // should match
-        assert!(run_match(&my_fn, &mut func_resolver, &vec![
-            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1) }),
+        assert!(run_matches(&my_fn, &mut env, &vec![
+            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
             Sem::ValueString(Value::ValueString { val: String::from("") }),
             Sem::ValueString(Value::ValueString { val: String::from("") }),
             Sem::ValueString(Value::ValueString { val: String::from("") }),
@@ -314,21 +483,21 @@ mod test {
         ], false), "Should match without coercion");
 
         // should match
-        assert!(run_match(&my_fn, &mut func_resolver, &vec![
-            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1) }),
+        assert!(run_matches(&my_fn, &mut env, &vec![
+            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
         ], false), "Should match without any vararg matches");
 
         // shouldn't match without coercion
-        assert!(!run_match(&my_fn, &mut func_resolver, &vec![
-            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1) }),
-            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1) }),
+        assert!(!run_matches(&my_fn, &mut env, &vec![
+            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
+            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
         ], false), "Shouldn't match without coercion");
 
         // should match with coercion
-        assert!(run_match(&my_fn, &mut func_resolver, &vec![
-            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1) }),
-            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1) }),
-            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1) }),
+        assert!(run_matches(&my_fn, &mut env, &vec![
+            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
+            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
+            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
         ], true), "Should match with coercion");
 
     }
@@ -348,30 +517,22 @@ mod test {
                 resource_type: None
             },
             |args| {
-                Box::new(Value::ValueString { val : String::from("")})
+                Ok(Value::ValueString { val : String::from("")})
             }
         );
         env.put_function(my_fn.clone());
 
-        let mut func_resolver = FunctionResolver {
-            env: &env,
-            name: "".to_string(),
-            arg_sems: &vec![]
-        };
+        let arg_sems = &vec![
+            Sem::ValueList(
+                vec![
+                    Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
+                    Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
+                ]
+            ),
+            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
+        ];
 
-        let result = FuncMatcher::try_match(
-            &func_resolver,
-            &my_fn,
-            &vec![
-                Sem::ValueList(
-                    vec![
-                        Sem::ValueFractional(Value::ValueFractional { val : BigDecimal::from(1)}),
-                        Sem::ValueFractional(Value::ValueFractional { val : BigDecimal::from(1)}),
-                    ]
-                ),
-                Sem::ValueFractional(Value::ValueFractional { val : BigDecimal::from(1)}),
-            ],
-            false);
+        let result = run_matcher(&my_fn, &mut env, arg_sems, None, false);
 
         match result {
             None => {
@@ -379,12 +540,13 @@ mod test {
             }
             Some(s) => {
                 match s {
-                    Sem::FnCall(f, arg_sems) => {
+                    Sem::FnCall(f, res, arg_sems) => {
                         assert_eq!(2, arg_sems.len());
                         assert_eq!(2, f.sig().arguments.len());
                         assert_eq!(&Type::list_of(Type::Fractional),
                                    f.sig().arguments.get(0).unwrap());
                         assert_eq!(Type::Fractional, f.sig().value);
+                        assert!(res.is_none());
                     }
                     _ => {
                         assert_eq!(1, 2, "Expected (List<A>,A) =~ (List<Frac>,Frac)")
@@ -393,78 +555,41 @@ mod test {
             }
         }
     }
-
-    #[test]
-    fn test_simple_fns() {
-        let mut env = Environment::new(Box::new(InMemoryValueStore::create()));
-        for f in get_coercions() {
-            env.put_function(f)
-        }
-
-        let my_fn = Function::create(
-            "my_func",
-            Signature {
-                value: Type::String,
-                arguments: vec![Type::Fractional, Type::Fractional],
-                resource_type: None
-            },
-            |args| {
-                Box::new(Value::ValueString { val : String::from("")})
+    fn run_matches(func : &Function, env: &mut Environment, arg_sems: &Vec<Sem>, allow_coercions : bool) -> bool {
+        match run_matcher(func, env, arg_sems, None, allow_coercions) {
+            None => {
+                false
             }
-        );
-        env.put_function(my_fn.clone());
+            Some(_) => {
+                true
+            }
+        }
+    }
 
+    fn run_matcher(func : &Function, env: &mut Environment, arg_sems: &Vec<Sem>, res : Option<IOResource>, allow_coercions : bool) -> Option<Sem> {
         let mut func_resolver = FunctionResolver {
             env: &env,
-            name: "".to_string(),
-            arg_sems: &vec![]
+            name : func.name().clone(),
+            arg_sems,
+            res
         };
 
-
-        // should match
-        assert!(run_match(&my_fn, &mut func_resolver, &vec![
-            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1) }),
-            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1) }),
-        ], false), "Should match without coercion");
-
-        // should not match
-        assert!(!run_match(&my_fn, &mut func_resolver, &vec![
-            Sem::ValueIntegral(Value::ValueIntegral { val: BigInt::from(1) }),
-            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1) }),
-        ], false), "Should NOT match without coercion");
-
-        // should not match
-        assert!(!run_match(&my_fn, &mut func_resolver, &vec![], false),
-                "Should NOT match without arguments");
-
-        // should match with coercion
-        assert!(run_match(&my_fn, &mut func_resolver, &vec![
-            Sem::ValueIntegral(Value::ValueIntegral { val: BigInt::from(1) }),
-            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1) }),
-        ], true), "Test match with simple coercion");
-
-    }
-
-    fn run_match(my_fn: &Function, func_resolver: &mut FunctionResolver, sems: &Vec<Sem>, allow_coercions: bool) -> bool {
-        let result = FuncMatcher::try_match(
-            &func_resolver,
-            &my_fn,
-            sems,
-            allow_coercions);
-
-        match result {
-            None => { false }
-            Some(s) => {
-                match s {
-                    Sem::FnCall(f, arg_sems) => {
-                        true
-                    }
-                    _ => {
-                        false
-                    }
-                }
-            }
+        let mut arg_types = vec![];
+        for s in func_resolver.arg_sems {
+            arg_types.push(s.get_type().clone());
         }
+        FuncMatcher {
+            func_resolver: &func_resolver,
+            func,
+            func_arg_idx: 0,
+            provided_arg_sems: &func_resolver.arg_sems,
+            provided_arg_types: arg_types,
+            provided_arg_idx: 0,
+            allow_coercions,
+            coercion_fns: vec![],
+            concrete_type_map: HashMap::new(),
+        }.run()
     }
+
 
 }

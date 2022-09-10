@@ -1,16 +1,17 @@
-use std::fmt::{Display, Formatter, Write};
+use std::fmt::{Display, Formatter};
 use crate::environment::Environment;
+use crate::external_resources::IOResource;
 use crate::parser::{Expr};
 use crate::tokens::{Token, EnumTypedVariant, TokenType};
 use crate::types::{Function, Type};
 use crate::values::{Value};
 
 pub struct SemanticAnalyzer<'a> {
-    env : &'a Box<Environment>
+    env : &'a Environment
 }
 
 impl SemanticAnalyzer<'_> {
-    pub fn analyze(env : &Box<Environment>, expr : Expr) -> Result<SemanticExpression, TypeError> {
+    pub fn analyze(env : &Environment, expr : Expr) -> Result<SemanticExpression, TypeError> {
         let mut semantic_analyzer = SemanticAnalyzer { env };
         semantic_analyzer.create_sem_tree(Box::new(expr), None)
     }
@@ -35,17 +36,11 @@ impl SemanticAnalyzer<'_> {
 
                 match sem_pipe {
                     Pipe::Value => {
-                        match self.create_sem_tree(right_expr, Some(left_sem.get_type())) {
-                            Ok(right_sem) => {
-                                Ok(SemanticExpression::PipedCommand {
-                                    sem: left_sem,
-                                    pipe: Some((sem_pipe, Box::new(right_sem))),
-                                })
-                            }
-                            Err(err) => {
-                                Err(err)
-                            }
-                        }
+                        let right_sem = self.create_sem_tree(right_expr, Some(left_sem.get_type()))?;
+                        Ok(SemanticExpression::PipedCommand {
+                            sem: left_sem,
+                            pipe: Some((sem_pipe, Box::new(right_sem))),
+                        })
                     }
                     Pipe::Push => {
                         // check that the outgoing type supports collection
@@ -53,16 +48,9 @@ impl SemanticAnalyzer<'_> {
                     }
                     Pipe::Pull => {
                         // check that the incoming type is streamable
-                        match left_sem {
-                            Sem::FnCall(f, _) => {
+                        if let Sem::FnCall(f, _, _) = left_sem {
 
-
-                            }
-                            _ => {
-
-                            }
                         }
-
                         Err(TypeError::new("Unsupported pipe"))
                     }
                     Pipe::Stream => {
@@ -88,19 +76,21 @@ impl SemanticAnalyzer<'_> {
         }
     }
 
-    fn apply_coercions(args : Vec<Sem>, coercions : Vec<Function>) -> Vec<Sem> {
+    /// todo apply_coercions not used; how is this being done currently?
+    fn apply_coercions(args : Vec<Sem>, coercions : &Vec<Function>) -> Vec<Sem> {
         let mut coerced_args = vec![];
         let mut idx = 0;
         for arg in args {
-            let coercion = &coercions[idx];
+            // assume coercion exists
+            if let Some(coercion) = coercions.get(idx) {
+                if coercion.name().eq("id") {
+                    coerced_args.push(arg);
+                } else {
+                    coerced_args.push(Sem::FnCall(coercion.clone(), None, vec![arg]));
+                }
 
-            if coercion.name().eq("id") {
-                coerced_args.push(arg);
-            } else {
-                coerced_args.push(Sem::FnCall(coercion.clone(), vec![arg]));
+                idx += 1;
             }
-
-            idx = idx + 1;
         }
 
         coerced_args
@@ -110,12 +100,28 @@ impl SemanticAnalyzer<'_> {
         match expr {
             Expr::FnCall(fn_name, args) => {
                 let mut sem_args = vec![];
+                let mut resource_arg : Option<IOResource> = None;
                 for arg in args {
-                    sem_args.push(self.analyze_expr(arg, None)?);
+                    match self.analyze_expr(arg, None)? {
+                        // configure the resource only if it hasn't been configured yet
+                        Sem::ValueResource(res) => {
+                            match resource_arg {
+                                None => {
+                                    resource_arg = Some(res);
+                                }
+                                Some(_) => {
+                                    return Err(TypeError::new("Only one resource is allowed as an argument to a function call"))
+                                }
+                            }
+                        }
+                        sem => {
+                            sem_args.push(sem)
+                        }
+                    }
                 }
-                match self.resolve_fn(fn_name, &sem_args, carry_type) {
+                match self.resolve_fn(fn_name, &sem_args, carry_type, resource_arg) {
                     None => {
-                        Err(TypeError::new("todo type error"))
+                        Err(TypeError::new("todo type error FnCall"))
                     }
                     Some(sem) => {
                         Ok(sem)
@@ -130,7 +136,7 @@ impl SemanticAnalyzer<'_> {
                 let right_arg = self.analyze_expr(right, None)?;
                 match self.resolve_binary_fn(op, &left_arg, &right_arg) {
                     None => {
-                        Err(TypeError::new("todo type error"))
+                        Err(TypeError::new("todo type error Binary"))
                     }
                     Some(sem) => {
                         Ok(sem)
@@ -138,13 +144,13 @@ impl SemanticAnalyzer<'_> {
                 }
             }
             Expr::Unary(op, expr) => {
-                if let Some(_) = carry_type {
+                if carry_type.is_some() {
                     return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
                 }
                 let arg = self.analyze_expr(expr, None)?;
                 match self.resolve_unary_fn(op, &arg) {
                     None => {
-                        Err(TypeError::new("todo type error"))
+                        Err(TypeError::new("todo type error Unary"))
                     }
                     Some(sem) => {
                         Ok(sem)
@@ -152,12 +158,12 @@ impl SemanticAnalyzer<'_> {
                 }
             }
             Expr::VariableReference(id) => {
-                if let Some(_) = carry_type {
+                if carry_type.is_some() {
                     return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
                 }
                 match self.resolve_var(id) {
                     None => {
-                        Err(TypeError::new("todo type error"))
+                        Err(TypeError::new("todo type error VariableReference"))
                     }
                     Some(sem_value) => {
                         Ok(Sem::Variable(id.clone(), Box::new(sem_value)))
@@ -165,44 +171,50 @@ impl SemanticAnalyzer<'_> {
                 }
             }
             Expr::ValueIntegral(v) => {
-                if let Some(_) = carry_type {
+                if carry_type.is_some() {
                     return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
                 }
                 Ok(Sem::ValueIntegral(v.clone()))
             }
             Expr::ValueFractional(v) => {
-                if let Some(_) = carry_type {
+                if carry_type.is_some() {
                     return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
                 }
                 Ok(Sem::ValueFractional(v.clone()))
             }
             Expr::ValueString(v) => {
-                if let Some(_) = carry_type {
+                if carry_type.is_some() {
                     return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
                 }
                 Ok(Sem::ValueString(v.clone()))
             }
             Expr::ValueBoolean(v) => {
-                if let Some(_) = carry_type {
+                if carry_type.is_some() {
                     return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
                 }
                 Ok(Sem::ValueBoolean(v.clone()))
             }
-            Expr::ValueUrl(v) => {
-                if let Some(_) = carry_type {
+            Expr::ValueResource(res) => {
+                if carry_type.is_some() {
                     return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
                 }
-                Ok(Sem::ValueUrl(v.clone()))
+                Ok(Sem::ValueResource(res.clone()))
+            }
+            Expr::FnResource(res) => {
+                // todo interpret resource as function
+
+
+                todo!()
             }
             Expr::ValueProperty(prop_name, prop_exr) => {
-                if let Some(_) = carry_type {
+                if carry_type.is_some() {
                     return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
                 }
                 let arg_sem = self.analyze_expr(prop_exr, None)?;
                 Ok(Sem::ValueProperty(prop_name.clone(), Box::new(arg_sem)))
             }
             Expr::ValuePropertySet(props) => {
-                if let Some(_) = carry_type {
+                if carry_type.is_some() {
                     return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
                 }
                 let mut prop_sems = vec![];
@@ -221,10 +233,10 @@ impl SemanticAnalyzer<'_> {
                 Ok(Sem::ValuePropertySet(prop_sems))
             }
             Expr::ValueList(exprs) => {
-                if let Some(_) = carry_type {
+                if carry_type.is_some() {
                     return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
                 }
-                if exprs.len() == 0 {
+                if exprs.is_empty() {
                     return Err(TypeError::new("List cannot be empty"));
                 }
                 let mut list_type : Option<Type> = None;
@@ -249,7 +261,7 @@ impl SemanticAnalyzer<'_> {
                         }
                     }
                 }
-                return Ok(Sem::ValueList(sems));
+                Ok(Sem::ValueList(sems))
             }
             _ => {  Err(TypeError::new(""))}
         }
@@ -265,17 +277,20 @@ impl SemanticAnalyzer<'_> {
         }
     }
 
-    fn resolve_fn(&self, fn_name: &String, args: &Vec<Sem>, carry_type : Option<Type>) -> Option<Sem> {
-        if let Some(t) = carry_type {
-            let mut args_with_carry = vec![];
-            for s in args {
-                args_with_carry.push(s.clone());
-            }
-            args_with_carry.push(Sem::ValueCarry(t));
-            self.env.find_function(fn_name, &args_with_carry)
-        } else {
-            self.env.find_function(fn_name, args)
+    fn resolve_fn(&self, fn_name: &String, args: &Vec<Sem>, carry_type : Option<Type>, res : Option<IOResource>) -> Option<Sem> {
+        let mut args_with_carry = vec![];
+        for s in args {
+            args_with_carry.push(s.clone());
         }
+        if let Some(t) = carry_type {
+            args_with_carry.push(Sem::ValueCarry(t));
+        }
+        if let Some(res) = res {
+            self.env.find_function_with_resource(fn_name, &args_with_carry, res)
+        } else {
+            self.env.find_function(fn_name, &args_with_carry)
+        }
+
     }
 
     fn resolve_var(&self, var_name : &String) -> Option<Sem> {
@@ -320,14 +335,14 @@ impl Display for SemanticExpression {
                     Some((pipe_type, right_expr)) => {
                         f.write_str(
                             format!("{} {} {}",
-                                    sem.to_string(),
-                                    pipe_type.to_string(),
-                                    right_expr.to_string()).as_str())
+                                    sem,
+                                    pipe_type,
+                                    right_expr).as_str())
                     }
                 }
             }
             SemanticExpression::Setter(var_name, expr) => {
-                f.write_str(format!("{} <- {}", var_name, expr.to_string()).as_str())
+                f.write_str(format!("{} <- {}", var_name, expr).as_str())
             }
         }
     }
@@ -355,18 +370,19 @@ impl Display for Pipe {
 
 #[derive(Clone)]
 pub enum Sem {
-    FnCall(Function, Vec<Sem>),
+    FnCall(Function, Option<IOResource>, Vec<Sem>),
     ValueCarry(Type),
     ValueIntegral(Value),
     ValueFractional(Value),
     ValueString(Value),
-    ValueUrl(Value),
     ValueBoolean(Value),
     ValueTime(Value),
     ValueList(Vec<Sem>),
     ValueProperty(String, Box<Sem>),
     ValuePropertySet(Vec<Sem>),
+    ValueResource(IOResource),
     Variable(String, Box<Sem>),
+    Void,
 }
 
 impl Sem {
@@ -387,9 +403,6 @@ impl Sem {
             Value::ValueTime { .. } => {
                 Sem::ValueTime(val)
             }
-            Value::ValueUrl { .. } => {
-                Sem::ValueUrl(val)
-            }
             Value::ValueList { item_type, vals } => {
                 let mut sem_vec = vec!();
                 for v in vals {
@@ -398,7 +411,7 @@ impl Sem {
                 Sem::ValueList(sem_vec)
             }
             Value::ValueProperty { name, val } => {
-                let sem = Sem::from_value(*val.clone());
+                let sem = Sem::from_value(*val);
                 Sem::ValueProperty(name, Box::new(sem))
             }
             Value::ValuePropertySet { vals } => {
@@ -409,6 +422,9 @@ impl Sem {
 
                 Sem::ValuePropertySet(sems)
             }
+            Value::ValueVoid => {
+                Sem::Void
+            }
         }
     }
 }
@@ -416,35 +432,35 @@ impl Sem {
 impl Display for Sem {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Sem::FnCall(func, args) => {
+            Sem::FnCall(func, res, args) => {
                 let mut args_strs = vec![];
                 for arg in args {
                     args_strs.push(arg.to_string());
                 }
                 let args_str = args_strs.join(", ");
 
-                f.write_str(format!("{} : [{}]", func.to_string(), args_str).as_str())
+                f.write_str(format!("{} :<{}> [{}]",
+                                    func.to_string(),
+                                    res.clone().map(|r| r.resource_type.id).unwrap_or(String::new()),
+                                    args_str).as_str())
             }
             Sem::ValueIntegral(v) => {
-                f.write_str(format!("({} : {})", v.to_string(), Type::Integral.to_string()).as_str())
+                f.write_str(format!("({} : {})", v.to_string(), Type::Integral).as_str())
             }
             Sem::ValueFractional(v) => {
-                f.write_str(format!("({} : {})", v.to_string(), Type::Fractional.to_string()).as_str())
+                f.write_str(format!("({} : {})", v.to_string(), Type::Fractional).as_str())
             }
             Sem::ValueString(v) => {
-                f.write_str(format!("({} : {})", v.to_string(), Type::String.to_string()).as_str())
-            }
-            Sem::ValueUrl(v) => {
-                f.write_str(format!("({} : {})", v.to_string(), Type::URL.to_string()).as_str())
+                f.write_str(format!("({} : {})", v.to_string(), Type::String).as_str())
             }
             Sem::ValueBoolean(v) => {
-                f.write_str(format!("({} : {})", v.to_string(), Type::Boolean.to_string()).as_str())
+                f.write_str(format!("({} : {})", v.to_string(), Type::Boolean).as_str())
             }
             Sem::ValueTime(v) => {
-                f.write_str(format!("({} : {})", v.to_string(), Type::Time.to_string()).as_str())
+                f.write_str(format!("({} : {})", v.to_string(), Type::Time).as_str())
             }
             Sem::Variable(name, sem) => {
-                f.write_str(format!("(${} : {})", name, sem.get_type().to_string()).as_str())
+                f.write_str(format!("(${} : {})", name, sem.get_type()).as_str())
             }
             Sem::ValueList(sems) => {
                 let mut sems_strs = vec![];
@@ -456,7 +472,7 @@ impl Display for Sem {
                 f.write_str(format!("[{}]", sems_str).as_str())
             }
             Sem::ValueProperty(id,sem) => {
-                f.write_str(format!("Property({}:{})", id, sem.to_string()).as_str())
+                f.write_str(format!("Property({}:{})", id, sem).as_str())
             }
             Sem::ValuePropertySet(props) => {
                 let mut prop_strs = vec![];
@@ -472,7 +488,13 @@ impl Display for Sem {
 
             }
             Sem::ValueCarry(t) => {
-                f.write_str(format!("[Carry-over: {}]", t.to_string()).as_str())
+                f.write_str(format!("[Carry-over: {}]", t).as_str())
+            }
+            Sem::ValueResource(r) => {
+                f.write_str(r.to_string().as_str())
+            }
+            Sem::Void => {
+                f.write_str("Void")
             }
         }
     }
@@ -518,26 +540,27 @@ impl Typed for SemanticExpression {
 impl Typed for Sem {
     fn get_type(&self) -> Type {
         match self {
-            Sem::FnCall(f, _) => { f.sig().value.clone()}
+            Sem::FnCall(f, _, _) => { f.sig().value.clone()}
             Sem::ValueIntegral(_) => { Type::Integral}
             Sem::ValueFractional(_) => { Type::Fractional}
             Sem::ValueString(_) => { Type::String}
-            Sem::ValueUrl(_) => { Type::URL }
             Sem::ValueBoolean(_) => { Type::Boolean }
             Sem::ValueTime(_) => { Type::Time}
-            Sem::Variable(_, sem) => { sem.get_type().clone()}
+            Sem::Variable(_, sem) => { sem.get_type()}
             Sem::ValueList(sems) => {
                 // a list cannot be created empty, therefore the unwrap is safe
-                Type::List(Box::new(sems.get(0).unwrap().get_type().clone()))
+                Type::List(Box::new(sems.get(0).unwrap().get_type()))
             }
             Sem::ValueProperty(name, sem) => {
-                Type::Property(name.clone(), Box::new(sem.get_type().clone())) }
+                Type::Property(name.clone(), Box::new(sem.get_type())) }
             Sem::ValuePropertySet(props) => {
                 Type::PropertySet(props.iter().map(|p| p.get_type()).collect())
             }
             Sem::ValueCarry(t) => {
                 t.clone()
             }
+            Sem::ValueResource(t) => { Type::Resource(t.clone().resource_type.id)}
+            Sem::Void => { Type::Void }
         }
     }
 }

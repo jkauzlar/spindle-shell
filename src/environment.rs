@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use crate::analyzer::{Sem};
+use crate::external_resources::IOResource;
 use crate::function_resolver::FunctionResolver;
 use crate::functions::SpecialFunctions;
 use crate::types::{Function, Type};
@@ -47,6 +48,10 @@ impl Environment {
         FunctionResolver::resolve(self, name, args)
     }
 
+    pub fn find_function_with_resource(&self, name : &String, args : &Vec<Sem>, res : IOResource) -> Option<Sem> {
+        FunctionResolver::resolve_with_resource(self, name, args, res)
+    }
+
     pub fn put_function(&mut self, f : Function) {
         let func_name = &f.name().clone();
         if !self.functions.contains_key(func_name) {
@@ -54,5 +59,11 @@ impl Environment {
         }
         let mut func_vec = self.functions.get_mut(func_name).unwrap();
         func_vec.push(f);
+    }
+
+    pub fn put_functions(&mut self, fs : Vec<Function>) {
+        for f in fs {
+            self.put_function(f)
+        }
     }
 }

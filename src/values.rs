@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{Debug, Display, format, Formatter};
 use std::str::{FromStr};
 use bigdecimal::{BigDecimal};
 use num_bigint::{BigInt};
@@ -9,6 +9,7 @@ use crate::Value::ValuePropertySet;
 
 #[derive(Debug,Clone, Eq, PartialEq)]
 pub enum Value {
+    ValueVoid,
 
     ValueString {
         val : String,
@@ -28,10 +29,6 @@ pub enum Value {
 
     ValueTime {
         val : u64,
-    },
-
-    ValueUrl {
-        val : Url
     },
 
     ValueProperty {
@@ -60,12 +57,12 @@ impl Value {
 
     pub fn get_type(&self) -> Type {
         match self {
+            Value::ValueVoid => Type::Void,
             Value::ValueString { .. } => Type::String,
             Value::ValueIntegral { .. } => Type::Integral,
             Value::ValueFractional { .. } => Type::Fractional,
             Value::ValueBoolean { .. } => Type::Boolean,
             Value::ValueTime { .. } => Type::Time,
-            Value::ValueUrl { .. } => Type::URL,
             Value::ValueList { item_type, vals: _vals } => Type::List(Box::new(item_type.clone())),
             Value::ValueProperty { name , val } =>
                 Type::Property(name.clone(), Box::new(val.get_type())),
@@ -81,13 +78,13 @@ impl Value {
 
     pub fn to_string(&self) -> String {
         match self {
+            Value::ValueVoid => String::new(),
             Value::ValueString { val } => format!("\"{}\"", val),
             Value::ValueIntegral { val } => format!("{}", val),
             Value::ValueFractional { val } => format!("{}", val),
             Value::ValueBoolean { val } => format!("{}", val),
             Value::ValueTime { val } => format!("{}", val),
             // always end a URL with a space, because it's the easiest way to tell when to stop reading
-            Value::ValueUrl { val } => format!("@{} ", val),
             Value::ValueList { item_type, vals } => {
                 let mut buf = String::new();
                 buf.push('[');
@@ -134,6 +131,10 @@ impl Value {
             }
         }
     }
+
+    pub fn str_val(v : &str) -> Self {
+        Value::ValueString { val : String::from(v) }
+    }
 }
 
 pub struct ValueReader {
@@ -166,9 +167,6 @@ impl ValueReader {
             }
             Type::Boolean => {
                 self.read_boolean()
-            }
-            Type::URL => {
-                self.read_url()
             }
             Type::Property(n, t) => {
                 self.read_property(&n, &t)
@@ -331,25 +329,6 @@ impl ValueReader {
         })
     }
 
-    fn read_url(&mut self) -> Result<Value, TypeSerializationError> {
-        self.assert_char('@',
-                         "Error parsing List: unexpected end of input",
-                         "Error parsing URL: URL should start with '@'"
-        )?;
-        let s = self.read_until(|c| c.is_whitespace());
-
-        match Url::parse(s.as_str()) {
-            Ok(val) => {
-                Ok(Value::ValueUrl { val })
-            }
-            Err(err) => {
-                Err(TypeSerializationError::new(format!(
-                    "Error parsing URL: Expected 'true' or 'false', got [{}]",
-                    s.as_str()).as_str()))
-            }
-        }
-    }
-
     fn read_list(&mut self, t: &Box<Type>) -> Result<Value, TypeSerializationError> {
         self.assert_char('[',
                          "Error parsing List: unexpected end of input",
@@ -482,22 +461,20 @@ mod tests {
         assert_eq!(ValueReader::read("\"hello there\"", &Type::String).unwrap(),
                    Value::ValueString { val : String::from("hello there")});
         assert_eq!(ValueReader::read("123456789", &Type::Integral).unwrap(),
-                   Value::ValueIntegral { val : BigInt::from(123456789 )});
+                   Value::ValueIntegral { val : BigInt::from(123456789u32 )});
         assert_eq!(ValueReader::read("1234.56789", &Type::Fractional).unwrap(),
                    Value::ValueFractional { val : BigDecimal::from_str("1234.56789").unwrap()});
-        assert_eq!(ValueReader::read("@https://www.google.com", &Type::URL).unwrap(),
-                   Value::ValueUrl { val : Url::parse("https://www.google.com").unwrap()});
         // add extra whitespace
         assert_eq!(ValueReader::read("  123456789  ", &Type::Integral).unwrap(),
-                   Value::ValueIntegral { val : BigInt::from(123456789 )});
+                   Value::ValueIntegral { val : BigInt::from(123456789u32 )});
         debug_assert_eq!(
             ValueReader::read("[1,2,3,4,5]", &Type::List(Box::new(Type::Integral))).unwrap(),
             Value::ValueList { item_type: Type::Integral, vals : vec!(
-                Value::ValueIntegral { val: BigInt::from(1) },
-                Value::ValueIntegral { val: BigInt::from(2) },
-                Value::ValueIntegral { val: BigInt::from(3) },
-                Value::ValueIntegral { val: BigInt::from(4) },
-                Value::ValueIntegral { val: BigInt::from(5) },
+                Value::ValueIntegral { val: BigInt::from(1u32) },
+                Value::ValueIntegral { val: BigInt::from(2u32) },
+                Value::ValueIntegral { val: BigInt::from(3u32) },
+                Value::ValueIntegral { val: BigInt::from(4u32) },
+                Value::ValueIntegral { val: BigInt::from(5u32) },
             ) }
         );
 

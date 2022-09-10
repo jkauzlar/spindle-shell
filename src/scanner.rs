@@ -175,17 +175,19 @@ impl Scanner {
             } else if c == ',' {
                 self.pop();
                 self.push_token(Token::Comma);
+            } else if c == '?' {
+                self.pop();
+                self.push_token(Token::QuestionMark);
             } else if c == '@' {
                 self.pop();
-                if let Some(url_str) = self.read_until(false, true, Scanner::is_space) {
-                    match Token::new_url(url_str) {
-                        Ok(tkn) => {
-                            self.push_token(tkn);
-                        },
-                        Err(err) => {
-                            return Err(err);
-                        },
+                if let Some(resource_str) = self.read_until(false, true, Scanner::is_space) {
+                    if resource_str.starts_with("http://") || resource_str.starts_with("https://") {
+                        self.push_token(Token::HttpResource(resource_str));
+                    } else {
+                        self.push_token(Token::FileResource(resource_str));
                     }
+                } else {
+                    return Err(ScannerError::new("Expected valid http/https URL or file path following '@' symbol"))
                 }
             } else if c == '$' {
                 self.pop();
@@ -484,14 +486,6 @@ mod tests {
     }
 
     #[test]
-    fn test_uris() {
-        check_scan("@https://www.google.com something_else",
-                   vec![
-                       Token::Url(Value::ValueUrl { val : Url::parse("https://www.google.com").unwrap() } ),
-                       Token::Identifier(String::from("something_else"))])
-    }
-
-    #[test]
     fn test_vars() {
         check_scan("1 + $my_var == 2", vec![
             Token::new_integral( String::from("1")).unwrap(),
@@ -509,6 +503,12 @@ mod tests {
             Token::Variable(String::from("a")),
             Token::RightParens,
         ])
+    }
+
+    #[test]
+    fn test_resources() {
+        check_scan("@hi", vec![Token::FileResource(String::from("hi"))]);
+        check_scan("@http://google.com", vec![Token::HttpResource(String::from("http://google.com"))]);
     }
 
 }
