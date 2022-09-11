@@ -1,4 +1,6 @@
 #![allow(unused_results)]
+extern crate core;
+
 use std::io::{Error, Stdout};
 use crossterm::{QueueableCommand, style};
 use crossterm::style::{Print, Stylize};
@@ -31,6 +33,7 @@ mod tokens;
 mod values_display;
 mod function_resolver;
 mod file_functions;
+mod http_functions;
 
 struct App {
     env : Box<Environment>

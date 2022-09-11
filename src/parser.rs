@@ -4,6 +4,7 @@ use std::fmt::{Display, Formatter, Write};
 use crate::external_resources::{BuiltInResources, IOResource, ResourceInstantiationError, ResourceType};
 use crate::parser::Expr::{Pipeline, Setter};
 use crate::tokens::{Token, EnumTypedVariant, TokenType};
+use crate::types::Type;
 use crate::values::{Value};
 
 /// ## Grammar
@@ -400,6 +401,9 @@ impl Parser {
                     Token::Boolean(v) => {
                         Ok(Expr::ValueBoolean(v))
                     }
+                    Token::TypeLiteral(t) => {
+                        Ok(Expr::ValueType(t))
+                    }
                     _ => {
                         Err(ParserError::new("unsupported value type!"))
                     }
@@ -533,6 +537,7 @@ pub enum Expr {
     ValueProperty(String, Box<Expr>),
     ValuePropertySet(Vec<Expr>),
     ValueResource(IOResource),
+    ValueType(Type),
 }
 
 impl Display for Expr {
@@ -613,6 +618,9 @@ impl Display for Expr {
             }
             Expr::FnResource(res) => {
                 f.write_str(format!("fn({})", res.to_string()).as_str())
+            }
+            Expr::ValueType(t) => {
+                f.write_str(format!("'{}", t.to_string()).as_str())
             }
         }
     }

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{Debug, Display, Formatter, Write};
 use std::str::FromStr;
 
 use crate::analyzer::TypeError;
@@ -23,6 +23,7 @@ pub enum Type {
     Generic(String),
     /// Signature type only; not a Value type
     VarArgs(Box<Type>),
+    TypeLiteral,
     Void,
 }
 
@@ -423,6 +424,9 @@ impl Display for Type {
             Type::Void => {
                 f.write_str("Void")
             }
+            Type::TypeLiteral => {
+                f.write_str("Type")
+            }
         }
     }
 }
@@ -457,6 +461,25 @@ impl TypeReader {
                 "No valid type found in type-string [{}] or extra-characters discovered at position [{}] with character [{}]",
                 tr.type_str, tr.pos, tr.peek().unwrap()).as_str()))
         }
+    }
+
+    /// used for inline type reading
+    pub fn read_and_return_rest(type_str : &str) -> (Result<Type, TypeError>, String) {
+        let mut tr = TypeReader {
+            type_str : String::from(type_str),
+            buf: type_str.chars().collect(),
+            pos: 0,
+        };
+        let result = tr.read_type();
+        let mut rest = String::new();
+
+        if !tr.end_of_input_reached() {
+            for c in &tr.buf[tr.pos..] {
+                rest.push(*c)
+            }
+        }
+
+        (result, rest)
     }
 
     fn read_type(&mut self) -> Result<Type, TypeError> {

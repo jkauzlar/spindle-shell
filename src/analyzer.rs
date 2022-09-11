@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Write};
 use crate::environment::Environment;
 use crate::external_resources::IOResource;
 use crate::parser::{Expr};
@@ -187,6 +187,12 @@ impl SemanticAnalyzer<'_> {
                     return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
                 }
                 Ok(Sem::ValueString(v.clone()))
+            }
+            Expr::ValueType(t) => {
+                if carry_type.is_some() {
+                    return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
+                }
+                Ok(Sem::ValueType(t.clone()))
             }
             Expr::ValueBoolean(v) => {
                 if carry_type.is_some() {
@@ -381,6 +387,7 @@ pub enum Sem {
     ValueProperty(String, Box<Sem>),
     ValuePropertySet(Vec<Sem>),
     ValueResource(IOResource),
+    ValueType(Type),
     Variable(String, Box<Sem>),
     Void,
 }
@@ -388,6 +395,9 @@ pub enum Sem {
 impl Sem {
     pub fn from_value(val : Value) -> Self {
         match val {
+            Value::ValueTypeLiteral(t) => {
+                Sem::ValueType(t)
+            }
             Value::ValueString { .. } => {
                 Sem::ValueString(val)
             }
@@ -496,6 +506,9 @@ impl Display for Sem {
             Sem::Void => {
                 f.write_str("Void")
             }
+            Sem::ValueType(t) => {
+                f.write_str(format!("'{}", t).as_str())
+            }
         }
     }
 }
@@ -561,6 +574,7 @@ impl Typed for Sem {
             }
             Sem::ValueResource(t) => { Type::Resource(t.clone().resource_type.id)}
             Sem::Void => { Type::Void }
+            Sem::ValueType(_) => { Type::TypeLiteral}
         }
     }
 }

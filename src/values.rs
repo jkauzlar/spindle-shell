@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt::{Debug, Display, format, Formatter};
 use std::str::{FromStr};
-use bigdecimal::{BigDecimal};
+use bigdecimal::{BigDecimal, FromPrimitive};
 use num_bigint::{BigInt};
 use reqwest::Url;
 use crate::types::Type;
@@ -10,6 +10,7 @@ use crate::Value::ValuePropertySet;
 #[derive(Debug,Clone, Eq, PartialEq)]
 pub enum Value {
     ValueVoid,
+    ValueTypeLiteral(Type),
 
     ValueString {
         val : String,
@@ -73,6 +74,7 @@ impl Value {
                 }
                 Type::PropertySet(val_types)
             }
+            Value::ValueTypeLiteral(_) => Type::TypeLiteral,
         }
     }
 
@@ -118,6 +120,9 @@ impl Value {
                 buf.push('}');
                 buf.to_string()
             }
+            Value::ValueTypeLiteral(t) => {
+                format!("'{}", t)
+            }
         }
     }
 
@@ -132,9 +137,46 @@ impl Value {
         }
     }
 
+    pub fn get_default(t : &Type) -> Self {
+        match t {
+            Type::String => { Value::str_val("")}
+            Type::Integral => { Value::int_val(0) }
+            Type::Fractional => { Value::frac_val(0.0)}
+            Type::Boolean => { Value::false_val() }
+            Type::List(t) => { Value::ValueList { item_type: *t.clone(), vals: vec![] }}
+            Type::Property(n, t) => {
+                Value::ValueProperty { name: n.clone(), val: Box::new(Self::get_default(t)) }
+            }
+            Type::PropertySet(props) => {
+                let prop_defaults = props.iter().map(Self::get_default).collect();
+                Value::ValuePropertySet { vals: prop_defaults }
+            }
+            Type::TypeLiteral => { Value::ValueTypeLiteral(Type::Void)}
+            _ => { Value::ValueVoid }
+        }
+    }
+
     pub fn str_val(v : &str) -> Self {
         Value::ValueString { val : String::from(v) }
     }
+
+    pub fn int_val(v : i128) -> Self {
+        Value::ValueIntegral { val : BigInt::from(v) }
+    }
+
+    pub fn frac_val(v : f64) -> Self {
+        Value::ValueFractional { val : BigDecimal::from_f64(v).unwrap_or(BigDecimal::from(0)) }
+    }
+
+    pub fn true_val() -> Self {
+        Value::ValueBoolean { val : true }
+    }
+
+    pub fn false_val() -> Self {
+        Value::ValueBoolean { val : false }
+    }
+
+
 }
 
 pub struct ValueReader {

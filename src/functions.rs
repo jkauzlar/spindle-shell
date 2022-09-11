@@ -190,6 +190,23 @@ pub fn get_builtins() -> Vec<Function> {
     funcs.push(SpecialFunctions::id());
 
     funcs.push(Function::create(
+       "==",
+        Signature {
+            value: Type::Boolean,
+            arguments: vec![Type::TypeLiteral, Type::TypeLiteral],
+            resource_type: None,
+        },
+        |args : FunctionArgs | {
+            if let Value::ValueTypeLiteral(t1) = args.get_unchecked(0) {
+                if let Value::ValueTypeLiteral(t2) = args.get_unchecked(1) {
+                    return Ok(Value::ValueBoolean { val : t1.eq(t2) })
+                }
+            }
+            panic!("")
+        }
+    ));
+
+    funcs.push(Function::create(
         "trim",
         Signature {
             value: Type::String,
@@ -203,6 +220,34 @@ pub fn get_builtins() -> Vec<Function> {
                 });
             }
             panic!("");
+        }
+    ));
+
+    funcs.push(Function::create(
+       "type",
+        Signature {
+            value: Type::TypeLiteral,
+            arguments: vec![Type::Generic(String::from("A"))],
+            resource_type : None,
+        },
+        |args : FunctionArgs | {
+            let v = args.get_unchecked(0);
+            Ok(Value::ValueTypeLiteral(v.get_type()))
+        }
+    ));
+
+    funcs.push(Function::create(
+        "default",
+        Signature {
+            value: Type::Void,
+            arguments: vec![Type::TypeLiteral],
+            resource_type : None,
+        },
+        |args : FunctionArgs | {
+            if let Value::ValueTypeLiteral(t) = args.get_unchecked(0) {
+                return Ok(Value::get_default(t));
+            }
+            panic!("")
         }
     ));
 

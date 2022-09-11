@@ -47,6 +47,9 @@ impl Evaluator<'_> {
             Sem::Void => {
                 Ok(Value::ValueVoid)
             }
+            Sem::ValueType(t) => {
+                Ok(Value::ValueTypeLiteral(t))
+            }
             Sem::FnCall(func, res, args) => {
                 let mut arg_vals : Vec<Value> = vec!();
                 for arg in args {

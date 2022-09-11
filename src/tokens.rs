@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use bigdecimal::{BigDecimal, ParseBigDecimalError};
 use num_bigint::{BigInt, ParseBigIntError};
+use crate::types::Type;
 use crate::Value;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -43,6 +44,7 @@ pub enum Token {
     Colon,                  // ':'
     QuestionMark,           // '?'
     Variable(String),       // '$'(Identifier)
+    TypeLiteral(Type),            // '\'' until type has been fully consumed
 }
 
 impl Token {
@@ -115,6 +117,7 @@ impl Token {
             Token::FileResource(val) => { format!("@{}", val)}
             Token::HttpResource(val) => { format!("@{}", val)}
             Token::QuestionMark => { String::from("?")}
+            Token::TypeLiteral(t) => { format!("'{}", t)}
         }
     }
 }
@@ -154,6 +157,7 @@ impl EnumTypedVariant<TokenType> for Token {
             Token::Fractional(_) => { vec![TokenType::Value]}
             Token::Boolean(_) => { vec![TokenType::Value]}
             Token::Time(_) => { vec![TokenType::Value]}
+            Token::TypeLiteral(_) => { vec![TokenType::Value] }
             Token::Identifier(_) => { vec![TokenType::Identifer]}
             Token::Variable(_) => { vec![TokenType::Variable]}
             Token::Equals => {vec![TokenType::BooleanOp]}

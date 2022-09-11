@@ -1,9 +1,12 @@
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
+use crate::analyzer::TypeError;
 
 use crate::tokens::{ScannerError, Token};
+use crate::types::{Type, TypeReader};
 
+#[derive(Debug)]
 pub struct Scanner {
     chars: Vec<char>,
     length : usize,
@@ -178,6 +181,23 @@ impl Scanner {
             } else if c == '?' {
                 self.pop();
                 self.push_token(Token::QuestionMark);
+            } else if c == '\'' {
+                self.pop();
+                if let Some(remaining) = self.read_remaining() {
+                    let (typereader_result, remaining_unconsumed)
+                        = TypeReader::read_and_return_rest(remaining.as_str());
+                    match typereader_result {
+                        Ok(t) => {
+                            self.pos = self.pos - remaining_unconsumed.len();
+                            self.push_token(Token::TypeLiteral(t));
+                        }
+                        Err(e) => {
+                            return Err(ScannerError::new(e.to_string().as_str()))
+                        }
+                    }
+                } else {
+                    return Err(ScannerError::new("Expected type literal following single quote"))
+                }
             } else if c == '@' {
                 self.pop();
                 if let Some(resource_str) = self.read_until(false, true, Scanner::is_space) {
