@@ -654,7 +654,7 @@ mod tests {
     use crate::analyzer::TypeError;
     use crate::types::{Function, Signature, Type, TypeReader};
     use crate::types::Type::Generic;
-    use crate::Value;
+    use crate::values::Value;
 
     #[test]
     fn test_typereader() {

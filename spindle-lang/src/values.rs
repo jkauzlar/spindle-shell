@@ -5,7 +5,6 @@ use bigdecimal::{BigDecimal, FromPrimitive};
 use num_bigint::{BigInt};
 use reqwest::Url;
 use crate::types::Type;
-use crate::Value::ValuePropertySet;
 
 #[derive(Debug,Clone, Eq, PartialEq)]
 pub enum Value {
@@ -297,7 +296,7 @@ impl ValueReader {
                          "Expected closing curly-brace",
         )?;
 
-        Ok(ValuePropertySet { vals })
+        Ok(Value::ValuePropertySet { vals })
     }
 
     fn check_prop<'a>(expected_prop_name : &str, t : &'a Type) -> Option<&'a Type> {
@@ -495,7 +494,7 @@ mod tests {
     use num_bigint::BigInt;
     use reqwest::Url;
     use crate::types::Type;
-    use crate::Value;
+    use crate::values::Value;
     use crate::values::ValueReader;
 
     #[test]

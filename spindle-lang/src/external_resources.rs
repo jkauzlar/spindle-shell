@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use crate::types::Type;
-use crate::Value;
+use crate::values::Value;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct IOResource {

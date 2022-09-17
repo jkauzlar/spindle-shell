@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter, Write};
-use crate::external_resources::{BuiltInResources, IOResource, ResourceInstantiationError, ResourceType};
+use crate::external_resources::{BuiltInResources, IOResource};
 use crate::parser::Expr::{Pipeline, Setter};
-use crate::tokens::{Token, EnumTypedVariant, TokenType};
+use crate::tokens::{EnumTypedVariant, Token, TokenType};
 use crate::types::Type;
-use crate::values::{Value};
+use crate::values::Value;
 
 /// ## Grammar
 ///

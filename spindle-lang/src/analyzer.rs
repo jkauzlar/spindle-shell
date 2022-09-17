@@ -1,10 +1,10 @@
 use std::fmt::{Display, Formatter, Write};
 use crate::environment::Environment;
 use crate::external_resources::IOResource;
-use crate::parser::{Expr};
-use crate::tokens::{Token, EnumTypedVariant, TokenType};
+use crate::parser::Expr;
+use crate::tokens::{EnumTypedVariant, Token, TokenType};
 use crate::types::{Function, Type};
-use crate::values::{Value};
+use crate::values::Value;
 
 pub struct SemanticAnalyzer<'a> {
     env : &'a Environment

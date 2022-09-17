@@ -1,8 +1,12 @@
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
-    }
-}
+pub mod scanner;
+pub mod environment;
+pub mod parser;
+pub mod values;
+pub mod types;
+pub mod analyzer;
+pub mod value_store;
+pub mod functions;
+pub mod evaluator;
+pub mod external_resources;
+mod tokens;
+mod function_resolver;

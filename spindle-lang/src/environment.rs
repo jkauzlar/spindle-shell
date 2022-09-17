@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter, Write};
-use crate::analyzer::{Sem};
+use crate::analyzer::Sem;
 use crate::external_resources::IOResource;
 use crate::function_resolver::FunctionResolver;
-use crate::functions::SpecialFunctions;
-use crate::types::{Function, Type};
+use crate::types::Function;
 use crate::value_store::ValueStore;
-use crate::values::{Value};
+use crate::values::Value;
 
 pub struct Environment {
     value_store : Box<dyn ValueStore>,

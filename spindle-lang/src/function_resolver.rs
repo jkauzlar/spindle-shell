@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use crate::analyzer::{Sem, Typed};
-use crate::Environment;
+use crate::environment::Environment;
 use crate::external_resources::IOResource;
 use crate::functions::SpecialFunctions;
 use crate::types::{Function, Type};
@@ -254,15 +254,22 @@ mod test {
     use std::collections::HashMap;
     use bigdecimal::BigDecimal;
     use num_bigint::BigInt;
-    use crate::types::{Function, Signature, Type};
-    use crate::{Environment, InMemoryValueStore, Value};
+    use spindle_lang::types::{Function, Signature, Type};
+    use spindle_lang::analyzer::{Sem, Typed};
+    use spindle_lang::analyzer::Sem::ValueList;
+    use spindle_lang::external_resources::{BuiltInResources, IOResource, ResourceType};
+    use spindle_lang::function_resolver::{FuncMatcher, FunctionResolver};
+    use spindle_lang::functions::SpecialFunctions;
+    use spindle_lang::functions::get_coercions;
     use crate::analyzer::{Sem, Typed};
-    use crate::analyzer::Sem::ValueList;
-    use crate::external_resources::{BuiltInResources, IOResource, ResourceType};
+    use crate::environment::Environment;
+    use crate::external_resources::{BuiltInResources, IOResource};
     use crate::function_resolver::{FuncMatcher, FunctionResolver};
-    use crate::functions::SpecialFunctions;
-    use crate::functions::get_coercions;
+    use crate::functions::{get_coercions, SpecialFunctions};
+    use crate::types::{Function, Signature, Type};
     use crate::Value::ValueIntegral;
+    use crate::value_store::InMemoryValueStore;
+    use crate::values::Value;
 
     #[test]
     fn test_find_funcs_with_value_type() {
@@ -412,13 +419,6 @@ mod test {
         );
         env.put_function(my_fn.clone());
 
-        let mut func_resolver = FunctionResolver {
-            env: &env,
-            name: "".to_string(),
-            arg_sems: &vec![],
-            res: None
-        };
-
 
         // should match
         assert!(run_matches(&my_fn, &mut env, &vec![
@@ -513,9 +513,9 @@ mod test {
         }
 
         let my_fn = Function::create(
-            "my_func",
+            "+",
             Signature {
-                value: Type::generic("A"),
+                value: Type::list_of(Type::generic("A")),
                 arguments: vec![Type::list_of(Type::generic("A")), Type::generic("A")],
                 resource_type: None
             },
@@ -523,16 +523,28 @@ mod test {
                 Ok(Value::ValueString { val : String::from("")})
             }
         );
+        let my_fn2 = Function::create(
+            "+",
+            Signature {
+                value: Type::list_of(Type::generic("A")),
+                arguments: vec![Type::list_of(Type::generic("A")), Type::list_of(Type::generic("A"))],
+                resource_type: None
+            },
+            |args| {
+                Ok(Value::ValueString { val : String::from("")})
+            }
+        );
         env.put_function(my_fn.clone());
+        env.put_function(my_fn2.clone());
 
         let arg_sems = &vec![
             Sem::ValueList(
                 vec![
                     Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
-                    Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
+                    Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(2u8) }),
                 ]
             ),
-            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
+            Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(3u8) }),
         ];
 
         let result = run_matcher(&my_fn, &mut env, arg_sems, None, false);
@@ -548,7 +560,9 @@ mod test {
                         assert_eq!(2, f.sig().arguments.len());
                         assert_eq!(&Type::list_of(Type::Fractional),
                                    f.sig().arguments.get(0).unwrap());
-                        assert_eq!(Type::Fractional, f.sig().value);
+                        assert_eq!(&Type::Fractional,
+                                   f.sig().arguments.get(1).unwrap());
+                        assert_eq!(Type::list_of(Type::Fractional), f.sig().value);
                         assert!(res.is_none());
                     }
                     _ => {
@@ -557,6 +571,48 @@ mod test {
                 }
             }
         }
+
+        let arg_sems2 = &vec![
+            Sem::ValueList(
+                vec![
+                    Sem::ValueFractional(Value::frac_val(1.0)),
+                    Sem::ValueFractional(Value::frac_val(2.0)),
+                ]
+            ),
+            Sem::ValueList(
+                vec![
+                    Sem::ValueFractional(Value::frac_val(3.0)),
+                    Sem::ValueFractional(Value::frac_val(4.0)),
+                ]
+            ),
+        ];
+
+        let result2 = run_matcher(&my_fn, &mut env, arg_sems, None, false);
+
+
+        match result2 {
+            None => {
+                assert_eq!(1, 2, "Expected (List<A>,A) =~ (List<Frac>,Frac)")
+            }
+            Some(s) => {
+                match s {
+                    Sem::FnCall(f, res, arg_sems) => {
+                        assert_eq!(2, arg_sems.len());
+                        assert_eq!(2, f.sig().arguments.len());
+                        assert_eq!(&Type::list_of(Type::Fractional),
+                                   f.sig().arguments.get(0).unwrap());
+                        assert_eq!(&Type::list_of(Type::Fractional),
+                                   f.sig().arguments.get(1).unwrap());
+                        assert_eq!(Type::list_of(Type::Fractional), f.sig().value);
+                        assert!(res.is_none());
+                    }
+                    _ => {
+                        assert_eq!(1, 2, "Expected (List<A>,A) =~ (List<Frac>,Frac)")
+                    }
+                }
+            }
+        }
+
     }
     fn run_matches(func : &Function, env: &mut Environment, arg_sems: &Vec<Sem>, allow_coercions : bool) -> bool {
         match run_matcher(func, env, arg_sems, None, allow_coercions) {

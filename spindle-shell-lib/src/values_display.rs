@@ -1,8 +1,8 @@
 use std::io::Stdout;
 use crossterm::{QueueableCommand, style};
 use crossterm::style::Stylize;
-use spindle_shell_lib::ShellDisplayable;
-use crate::Value;
+use crate::ShellDisplayable;
+use spindle_lang::values::Value;
 
 impl ShellDisplayable for Value {
     fn pretty_print_shell(&self, stdout: &mut Stdout) {

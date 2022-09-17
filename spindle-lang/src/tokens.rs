@@ -4,7 +4,7 @@ use std::str::FromStr;
 use bigdecimal::{BigDecimal, ParseBigDecimalError};
 use num_bigint::{BigInt, ParseBigIntError};
 use crate::types::Type;
-use crate::Value;
+use crate::values::Value;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum Token {
@@ -79,7 +79,7 @@ impl Token {
     }
 
 
-    pub(crate) fn get_string_rep(&self) -> String {
+    pub fn get_string_rep(&self) -> String {
         match self {
             Token::String(val) => { val.to_string() }
             Token::Integral(val) => { val.to_string()}

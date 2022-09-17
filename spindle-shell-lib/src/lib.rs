@@ -5,15 +5,37 @@ use std::io;
 use std::io::{stdout, Stdout, Write};
 
 use crossterm::{cursor, execute, QueueableCommand, style::{self, Stylize}, terminal};
-use crossterm::cursor::{MoveToColumn};
+use crossterm::cursor::MoveToColumn;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, read};
 use crossterm::style::{Print, PrintStyledContent};
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
+
+mod values_display;
 
 
 pub trait ShellApplicationEnvironment {
     fn handle_input(&mut self, inp : &str) -> ShellCommand;
     fn supply_prompt(&self) -> String;
+}
+
+pub struct MergedShellDisplayable {
+    first : Box<dyn ShellDisplayable>,
+    second : Box<dyn ShellDisplayable>,
+}
+
+impl MergedShellDisplayable {
+    fn new(first : Box<dyn ShellDisplayable>, second : Box<dyn ShellDisplayable>) -> Self {
+        Self {
+            first, second,
+        }
+    }
+}
+
+impl ShellDisplayable for MergedShellDisplayable {
+    fn pretty_print_shell(&self, stdout: &mut Stdout) {
+        self.first.pretty_print_shell(stdout);
+        self.second.pretty_print_shell(stdout);
+    }
 }
 
 pub trait ShellDisplayable {
@@ -42,8 +64,9 @@ impl Shell {
 
     pub fn run(&mut self) -> Result<(), ShellError> {
         let mut stdout = io::stdout();
+        // raw mode needed for arrow keys to be interpreted correctly
+        terminal::enable_raw_mode();
         execute!(stdout, EnterAlternateScreen);
-        // terminal::enable_raw_mode();
         let mut exit_shell = false;
 
         while !exit_shell {
@@ -150,9 +173,9 @@ impl Shell {
         stdout.queue(MoveToColumn(0));
         stdout.flush();
 
-        terminal::disable_raw_mode();
         execute!(stdout, LeaveAlternateScreen);
 
+        terminal::disable_raw_mode();
         Ok(())
     }
 }

@@ -1,10 +1,9 @@
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
-use crate::analyzer::TypeError;
 
 use crate::tokens::{ScannerError, Token};
-use crate::types::{Type, TypeReader};
+use crate::types::TypeReader;
 
 #[derive(Debug)]
 pub struct Scanner {
@@ -422,8 +421,10 @@ mod tests {
     use reqwest::Url;
 
     use crate::Scanner;
-    use crate::scanner::{ScannerError, Token};
-    use crate::values::Value;
+    use spindle_lang::scanner::{ScannerError, Token};
+    use spindle_lang::values::Value;
+    use crate::scanner::Scanner;
+    use crate::tokens::Token;
 
     fn assert_vec_items(tkns : &Vec<Token>, expected_tokens : Vec<Token>) {
         let mut idx = 0;

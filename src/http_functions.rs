@@ -1,8 +1,8 @@
 use std::future::Future;
 use reqwest::{Error, Response};
-use crate::evaluator::EvaluationError;
-use crate::external_resources::{BuiltInResources, IOResource};
-use crate::types::{Function, FunctionArgs, Signature, Type};
+use spindle_lang::evaluator::EvaluationError;
+use spindle_lang::external_resources::{BuiltInResources, IOResource};
+use spindle_lang::types::{Function, FunctionArgs, Signature, Type};
 use crate::Value;
 
 struct HttpFunctions { }

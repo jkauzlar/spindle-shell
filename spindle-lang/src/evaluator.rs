@@ -1,10 +1,9 @@
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
-use crate::analyzer::{Sem, SemanticExpression, Typed};
-use crate::Environment;
-use crate::types::{FunctionArgs, Type};
-use crate::Value::{ValueProperty, ValuePropertySet};
 use crate::values::{Value, ValueReader};
+use crate::analyzer::{Sem, SemanticExpression, Typed};
+use crate::environment::Environment;
+use crate::types::Type;
 
 pub struct Evaluator<'a> {
     env : &'a mut Box<Environment>
@@ -81,7 +80,7 @@ impl Evaluator<'_> {
             }
             Sem::ValueProperty(id, sem) => {
                 let v = self.eval_sem(&sem, carry_val.clone())?;
-                Ok(ValueProperty {
+                Ok(Value::ValueProperty {
                     name: id,
                     val: Box::new(v),
                 })
@@ -91,7 +90,7 @@ impl Evaluator<'_> {
                 for s in sems {
                     vals.push(self.eval_sem(&Box::new(s), carry_val.clone())?);
                 }
-                Ok(ValuePropertySet { vals })
+                Ok(Value::ValuePropertySet { vals })
             }
             Sem::ValueList(sem_vec) => {
                 if sem_vec.is_empty() {

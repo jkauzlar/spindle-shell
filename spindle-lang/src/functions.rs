@@ -2,10 +2,9 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 use std::str::FromStr;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use num_bigint::BigInt;
-use regex::{Regex};
+use regex::Regex;
 use crate::types::{Function, FunctionArgs, Signature, Type};
-use crate::Value::ValueString;
-use crate::values::{Value};
+use crate::values::Value;
 
 
 macro_rules! create_cmp_fn {
@@ -252,6 +251,49 @@ pub fn get_builtins() -> Vec<Function> {
     ));
 
     funcs.push(Function::create(
+        "+",
+        Signature {
+            value: Type::list_of(Type::generic("A")),
+            arguments: vec![Type::list_of(Type::generic("A")), Type::generic("A")],
+            resource_type : None,
+        },
+        |args : FunctionArgs | {
+            if let Value::ValueList { item_type, vals } = args.get_unchecked(0) {
+                let v = args.get_unchecked(1);
+                let mut new_vals = vals.clone();
+                new_vals.push(v.clone());
+                return Ok(Value::ValueList { item_type: item_type.clone(), vals: new_vals });
+            }
+            panic!("")
+        }
+    ));
+
+    funcs.push(Function::create(
+        "+",
+        Signature {
+            value: Type::list_of(Type::generic("A")),
+            arguments: vec![Type::list_of(Type::generic("A")), Type::list_of(Type::generic("A"))],
+            resource_type : None,
+        },
+        |args : FunctionArgs | {
+            if let Value::ValueList { item_type, vals } = args.get_unchecked(0) {
+                if let Value::ValueList { item_type: _, vals : more_vals} = args.get_unchecked(1) {
+                    let mut new_vals = vals.clone();
+                    for v in vals {
+                        new_vals.push(v.clone());
+                    }
+                    for v in more_vals {
+                        new_vals.push(v.clone());
+                    }
+                    return Ok(Value::ValueList { item_type: item_type.clone(), vals: new_vals });
+                }
+            }
+            panic!("")
+        }
+    ));
+
+
+    funcs.push(Function::create(
         "interpolate",
         Signature {
             value: Type::String,
@@ -290,7 +332,7 @@ pub fn get_builtins() -> Vec<Function> {
                         }
                     }
                 }
-                return Ok(ValueString { val: result });
+                return Ok(Value::ValueString { val: result });
             }
            panic!("")
        }

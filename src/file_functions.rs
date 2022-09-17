@@ -1,8 +1,8 @@
 use std::fs;
 
-use crate::evaluator::EvaluationError;
-use crate::external_resources::{BuiltInResources, IOResource};
-use crate::types::{Function, FunctionArgs, Signature, Type};
+use spindle_lang::evaluator::EvaluationError;
+use spindle_lang::external_resources::{BuiltInResources, IOResource};
+use spindle_lang::types::{Function, FunctionArgs, Signature, Type};
 use crate::Value;
 use crate::Value::{ValueString, ValueVoid};
 
@@ -67,7 +67,7 @@ impl FileFunctions {
 mod tests {
     use std::fs;
     use reqwest::Url;
-    use crate::external_resources::{BuiltInResources, IOResource};
+    use spindle_lang::external_resources::{BuiltInResources, IOResource};
 
     use crate::file_functions::FileFunctions;
     use crate::Value;
