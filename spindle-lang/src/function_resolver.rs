@@ -254,20 +254,12 @@ mod test {
     use std::collections::HashMap;
     use bigdecimal::BigDecimal;
     use num_bigint::BigInt;
-    use spindle_lang::types::{Function, Signature, Type};
-    use spindle_lang::analyzer::{Sem, Typed};
-    use spindle_lang::analyzer::Sem::ValueList;
-    use spindle_lang::external_resources::{BuiltInResources, IOResource, ResourceType};
-    use spindle_lang::function_resolver::{FuncMatcher, FunctionResolver};
-    use spindle_lang::functions::SpecialFunctions;
-    use spindle_lang::functions::get_coercions;
     use crate::analyzer::{Sem, Typed};
     use crate::environment::Environment;
     use crate::external_resources::{BuiltInResources, IOResource};
     use crate::function_resolver::{FuncMatcher, FunctionResolver};
     use crate::functions::{get_coercions, SpecialFunctions};
     use crate::types::{Function, Signature, Type};
-    use crate::Value::ValueIntegral;
     use crate::value_store::InMemoryValueStore;
     use crate::values::Value;
 

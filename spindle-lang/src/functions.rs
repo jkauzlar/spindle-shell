@@ -1,10 +1,13 @@
 use std::ops::{Add, Div, Mul, Neg, Sub};
 use std::str::FromStr;
+use std::time::Duration;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use num_bigint::BigInt;
 use regex::Regex;
 use crate::types::{Function, FunctionArgs, Signature, Type};
 use crate::values::Value;
+
+/// Defines built-in functions for operators and coercions
 
 
 macro_rules! create_cmp_fn {
@@ -80,9 +83,43 @@ impl SpecialFunctions {
                 resource_type: None
             },
             |args : FunctionArgs| {
-                Ok((*args.get_unchecked(0)).clone())
+                Ok(args.vals.get(0).unwrap().clone())
             }
         )
+    }
+
+    pub fn wait() -> Function {
+        Function::create(
+            "wait",
+            Signature {
+                value: Type::Void,
+                arguments: vec![Type::Integral],
+                resource_type: None
+            },
+            |args : FunctionArgs | {
+                if let Value::ValueIntegral { val } = args.vals.get(0).unwrap() {
+                    match val.to_u32() {
+                        None => {}
+                        Some(v) => {
+                            std::thread::sleep(Duration::from_secs(1))
+                        }
+                    }
+                }
+                Ok(Value::ValueVoid)
+            }
+        )
+    }
+
+    pub fn read_fn_name() -> String {
+        String::from("read")
+    }
+
+    pub fn pull_fn_name() -> String {
+        String::from("pull")
+    }
+
+    pub fn push_fn_name() -> String {
+        String::from("push")
     }
 
     pub fn coercion_fn_name() -> String {
@@ -187,6 +224,7 @@ pub fn get_builtins() -> Vec<Function> {
     funcs.push(create_cmp_fn!(String, ValueString, "<=", is_le));
 
     funcs.push(SpecialFunctions::id());
+    funcs.push(SpecialFunctions::wait());
 
     funcs.push(Function::create(
        "==",

@@ -1,23 +1,27 @@
 #![allow(unused_results)]
 extern crate core;
 
+use std::cmp::Ordering;
 use std::io::{Error, Stdout};
+
 use crossterm::{QueueableCommand, style};
 use crossterm::style::{Print, Stylize};
 use regex::internal::Inst;
 use tokio::time::Instant;
-use spindle_preprocessor::{PreprocCommand, SpindlePreprocessor};
-use spindle_shell_lib::{Shell, ShellApplicationEnvironment, ShellCommand, ShellDisplayable};
+
 use spindle_lang::analyzer::SemanticAnalyzer;
 use spindle_lang::environment::Environment;
 use spindle_lang::evaluator::Evaluator;
-use crate::file_functions::FileFunctions;
 use spindle_lang::functions::{get_builtins, get_coercions};
-
 use spindle_lang::parser::Parser;
 use spindle_lang::scanner::Scanner;
+use spindle_lang::types::Function;
 use spindle_lang::value_store::InMemoryValueStore;
 use spindle_lang::values::Value;
+use spindle_preprocessor::{PreprocCommand, SpindlePreprocessor};
+use spindle_shell_lib::{Shell, ShellApplicationEnvironment, ShellCommand, ShellDisplayable};
+
+use crate::file_functions::FileFunctions;
 
 mod file_functions;
 mod http_functions;
@@ -166,6 +170,50 @@ impl ShellApplicationEnvironment for App {
                 input_buffer.clear();
                 input_buffer.push_str(expr.clone().as_str());
                 print_exec_time = true;
+            }
+            Ok(PreprocCommand::Functions(filter)) => {
+                let mut rows : Vec<Vec<String>> = vec![];
+
+                self.env.get_func_names().iter()
+                    .filter(|n| n.contains(filter.as_str()))
+                    .for_each(|n| {
+                        for f in self.env.get_funcs(n.as_str()).unwrap() {
+                            rows.push(vec![n.clone(), f.sig().to_string()])
+                        }
+                    });
+
+                rows.sort_by(|r1, r2| {
+                    let tmp = String::new();
+                    let n1 = r1.get(0).unwrap_or(&tmp);
+                    let n2 = r2.get(0).unwrap_or(&tmp);
+                    n1.cmp(n2)
+                });
+
+                let mut formatted_rows : Vec<Vec<String>> = vec![];
+
+                // remove repeated function names from columns;
+                let mut last_name = String::new();
+                for mut row in rows {
+                    let mut replacement_row = vec![];
+                    if row.get(0).unwrap().eq(&last_name) {
+                        replacement_row.push(String::new());
+                    } else {
+                        last_name = row.get(0).unwrap().clone();
+                        replacement_row.push(last_name.clone())
+                    }
+                    replacement_row.push(row.get(1).unwrap().clone());
+                    formatted_rows.push(replacement_row);
+                }
+
+                let tbl = ShellMessage::TabularInfo {
+                    headers: vec![String::from("Function"), String::from("Signature")],
+                    rows : formatted_rows,
+                };
+
+                return ShellCommand::OUT(Box::new(tbl));
+            }
+            Ok(PreprocCommand::Describe(filter)) => {
+                // todo
             }
             Ok(PreprocCommand::NoCommand) => {
                 // continue as normal

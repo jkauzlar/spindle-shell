@@ -3,7 +3,8 @@ use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
 
 use crate::tokens::{ScannerError, Token};
-use crate::types::TypeReader;
+use crate::type_reader::TypeReader;
+
 
 #[derive(Debug)]
 pub struct Scanner {
@@ -420,9 +421,6 @@ mod tests {
     use num_bigint::{BigInt, ParseBigIntError};
     use reqwest::Url;
 
-    use crate::Scanner;
-    use spindle_lang::scanner::{ScannerError, Token};
-    use spindle_lang::values::Value;
     use crate::scanner::Scanner;
     use crate::tokens::Token;
 

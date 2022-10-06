@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use crate::values::{Value, ValueReader};
-use crate::analyzer::{Sem, SemanticExpression, Typed};
+use crate::analyzer::{Pipe, Sem, SemanticExpression, Typed};
 use crate::environment::Environment;
 use crate::types::Type;
 
@@ -25,8 +25,20 @@ impl Evaluator<'_> {
                         Ok(left_val)
                     }
                     Some((p, right_expr)) => {
-                        let right_val = self.eval_sem_expr(right_expr, Some(left_val))?;
-                        Ok(right_val)
+                        match p {
+                            Pipe::Standard => {
+                                Ok(self.eval_sem_expr(right_expr, Some(left_val))?)
+                            }
+                            Pipe::Pull => {
+                                Err(EvaluationError::new("Unsupported pipe"))
+                            }
+                            Pipe::Push => {
+                                Err(EvaluationError::new("Unsupported pipe"))
+                            }
+                            Pipe::Stream => {
+                                Err(EvaluationError::new("Unsupported pipe"))
+                            }
+                        }
                     }
                 }
             }

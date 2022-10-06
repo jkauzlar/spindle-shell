@@ -35,7 +35,7 @@ impl SemanticAnalyzer<'_> {
                 let sem_pipe = SemanticAnalyzer::translate_pipe(pipe);
 
                 match sem_pipe {
-                    Pipe::Value => {
+                    Pipe::Standard => {
                         let right_sem = self.create_sem_tree(right_expr, Some(left_sem.get_type()))?;
                         Ok(SemanticExpression::PipedCommand {
                             sem: left_sem,
@@ -275,7 +275,7 @@ impl SemanticAnalyzer<'_> {
 
     pub fn translate_pipe(pipe_tkn : Token) -> Pipe {
         match pipe_tkn {
-            Token::Pipe => Pipe::Value,
+            Token::Pipe => Pipe::Standard,
             Token::PushPipe => Pipe::Push,
             Token::PullPipe => Pipe::Pull,
             Token::StreamPipe => Pipe::Stream,
@@ -356,7 +356,7 @@ impl Display for SemanticExpression {
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Pipe {
-    Value,
+    Standard,
     Push,
     Pull,
     Stream,
@@ -366,7 +366,7 @@ pub enum Pipe {
 impl Display for Pipe {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Pipe::Value => { f.write_str("|") }
+            Pipe::Standard => { f.write_str("|") }
             Pipe::Push => { f.write_str("<|")}
             Pipe::Pull => { f.write_str("|>")}
             Pipe::Stream => { f.write_str("<|>")}

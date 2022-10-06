@@ -16,6 +16,8 @@ pub enum PreprocCommand {
     Quit,
     Types(String),
     Timer(String),
+    Functions(String),
+    Describe(String),
     Help,
 }
 
@@ -24,10 +26,12 @@ impl PreprocCommand {
         let mut info = vec![];
         info.push(PreprocCommandInfo::new(":[h]elp", "show this help text"));
         info.push(PreprocCommandInfo::new(":[q]uit", "exit shell"));
+        info.push(PreprocCommandInfo::new(":fns | :functions <search>?", "list available functions filtered optionally by argument string"));
+        info.push(PreprocCommandInfo::new(":desc | :describe <search>", "describe functions filtered optionally by argument string"));
         info.push(PreprocCommandInfo::new(":[t]ype(s) <expression>",
-                                          "do not execute, but show only the types of the following expression"));
-        info.push(PreprocCommandInfo::new(":time <expression>",
-                                          "Print the execution time of the following expression"));
+                                          "do not execute, but show only the types of the expression"));
+        info.push(PreprocCommandInfo::new(":time(r) <expression>",
+                                          "Print the execution time of the expression in microseconds"));
 
         info
     }
@@ -97,12 +101,16 @@ impl PreprocCommandParser {
             Ok(PreprocCommand::Quit)
         } else if cmd_str.as_str().eq("type") || cmd_str.as_str().eq("types") || cmd_str.as_str().eq("t") {
             Ok(PreprocCommand::Types(self.read_remaining()))
-        } else if cmd_str.as_str().eq("time") {
+        } else if cmd_str.as_str().eq("time") || cmd_str.as_str().eq("timer") {
             Ok(PreprocCommand::Timer(self.read_remaining()))
+        } else if cmd_str.as_str().eq("fns") || cmd_str.as_str().eq("functions") {
+            Ok(PreprocCommand::Functions(String::from(self.read_remaining().trim())))
+        } else if cmd_str.as_str().eq("desc") || cmd_str.as_str().eq("describe") {
+            Ok(PreprocCommand::Describe(String::from(self.read_remaining().trim())))
         } else if cmd_str.as_str().eq("") {
-            Err(PreprocessorError::new("Shell command name should follow colon. Type ':help' for more information."))
+            Err(PreprocessorError::new("Shell command name should follow colon. Type ':help' for list of available commands."))
         } else {
-            Err(PreprocessorError::new(format!("Unknown command [{}]", cmd_str.clone()).as_str()))
+            Err(PreprocessorError::new(format!("Unknown preprocessor command [{}]", cmd_str.clone()).as_str()))
         }
     }
 

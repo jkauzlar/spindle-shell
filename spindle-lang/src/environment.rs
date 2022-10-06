@@ -26,8 +26,32 @@ impl Environment {
         }
     }
 
+    pub fn get_func_names(&self) -> Vec<String> {
+        let mut names = vec![];
+        for key in self.functions.keys() {
+            names.push(key.clone());
+        }
+        names
+    }
+
     pub fn get_funcs(&self, name : &str) -> Option<&Vec<Function>> {
         self.functions.get(name)
+    }
+
+    pub fn resolve_val(&self, name: &str) -> Option<Value> {
+        match self.value_store.resolve(name) {
+            None => { None }
+            Some((t, v)) => {
+                match Value::from_string(t, v) {
+                    Ok(v) => {
+                        Some(v)
+                    }
+                    Err(_) => {
+                        None
+                    }
+                }
+            }
+        }
     }
 
     pub fn resolve_value(&self, name: &str) -> Option<Sem> {
