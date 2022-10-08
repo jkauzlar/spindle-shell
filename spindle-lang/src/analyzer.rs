@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter, Write};
+use std::fmt::{Display, Formatter};
 use crate::environment::Environment;
 use crate::external_resources::IOResource;
 use crate::parser::Expr;

@@ -215,9 +215,7 @@ impl TypeReader {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use crate::analyzer::TypeError;
     use crate::types::{Function, Signature, Type};
-    use crate::types::Type::Generic;
     use crate::values::Value;
 
     #[test]

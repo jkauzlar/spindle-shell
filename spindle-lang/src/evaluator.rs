@@ -87,7 +87,7 @@ impl Evaluator<'_> {
             Sem::ValueTime(v) => {
                 Ok(v)
             }
-            Sem::Variable(id, sem) => {
+            Sem::Variable(_, sem) => {
                 self.eval_sem(&sem, carry_val.clone())
             }
             Sem::ValueProperty(id, sem) => {

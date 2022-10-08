@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::{Debug, Display, Formatter, Write};
+use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
@@ -122,7 +122,7 @@ impl Type {
                 Type::Generic(type_label) => {
                     concrete_type_map.insert(type_label.clone(), other_type.clone());
                 }
-                Type::VarArgs(t) => {
+                Type::VarArgs(_t) => {
                     panic!("handle varargs separately")
                 }
                 _ => {

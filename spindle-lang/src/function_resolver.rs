@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
 use crate::analyzer::{Sem, Typed};
 use crate::environment::Environment;
 use crate::external_resources::IOResource;
@@ -356,21 +355,21 @@ mod test {
             Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
             Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
         ];
-        let resourceOpt = Some(IOResource {
+        let resource_opt = Some(IOResource {
             id: String::from("file-resource"),
             properties: Default::default(),
             resource_type: BuiltInResources::file_resource_type(),
         });
 
         // should not match function with no resource
-        match run_matcher(&my_fn, &mut env, sems, resourceOpt.clone(), false) {
+        match run_matcher(&my_fn, &mut env, sems, resource_opt.clone(), false) {
             None => {
                 // expected
             }
             Some(_) => { assert_eq!(my_fn, my_fn2, "my_fn<>:(Frac,Frac)->String !~ my_fn<file>:(Frac,Frac)->String") }
         }
         // should match
-        match run_matcher(&my_fn2, &mut env, sems, resourceOpt.clone(), false) {
+        match run_matcher(&my_fn2, &mut env, sems, resource_opt.clone(), false) {
             None => { assert_eq!(1, 2, "my_fn<file>:(Frac,Frac)->String =~ my_fn<file>:(Frac,Frac)->String") }
             Some(Sem::FnCall(f, res, args)) => {
                 assert_eq!(f.sig().resource_type, Some(BuiltInResources::file_resource_type()));
@@ -382,7 +381,7 @@ mod test {
             }
         }
         // should not match function that requires different resource type
-        match run_matcher(&my_fn3, &mut env, sems, resourceOpt.clone(), false) {
+        match run_matcher(&my_fn3, &mut env, sems, resource_opt.clone(), false) {
             None => {
                 // expected
             }

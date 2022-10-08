@@ -1,10 +1,7 @@
-use std::error::Error;
-use std::fmt::{Debug, Display, Formatter};
-use std::str::FromStr;
+use std::fmt::Debug;
 
 use crate::tokens::{ScannerError, Token};
 use crate::type_reader::TypeReader;
-
 
 #[derive(Debug)]
 pub struct Scanner {
@@ -218,7 +215,7 @@ impl Scanner {
                 }
             } else if c == ':' {
                 self.pop();
-                if let Some(&next) = self.peek() {
+                if let Some(&_next) = self.peek() {
                     self.push_token(Token::Colon);
                 } else {
                     return Err(ScannerError::new("Invalid character [:]"));
@@ -417,10 +414,6 @@ impl Scanner {
 
 #[cfg(test)]
 mod tests {
-    use bigdecimal::{BigDecimal, FromPrimitive};
-    use num_bigint::{BigInt, ParseBigIntError};
-    use reqwest::Url;
-
     use crate::scanner::Scanner;
     use crate::tokens::Token;
 

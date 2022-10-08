@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::{Debug, Formatter, Write};
+use std::fmt::{Debug, Formatter};
 use crate::analyzer::Sem;
 use crate::external_resources::IOResource;
 use crate::function_resolver::FunctionResolver;

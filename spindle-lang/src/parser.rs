@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::error::Error;
-use std::fmt::{Display, Formatter, Write};
+use std::fmt::{Display, Formatter};
 use crate::external_resources::{BuiltInResources, IOResource};
 use crate::parser::Expr::{Pipeline, Setter};
 use crate::tokens::{EnumTypedVariant, Token, TokenType};

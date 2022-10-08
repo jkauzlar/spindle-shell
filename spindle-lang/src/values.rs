@@ -1,9 +1,8 @@
 use std::error::Error;
-use std::fmt::{Debug, Display, format, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::str::{FromStr};
 use bigdecimal::{BigDecimal, FromPrimitive};
 use num_bigint::{BigInt};
-use reqwest::Url;
 use crate::types::Type;
 
 #[derive(Debug,Clone, Eq, PartialEq)]
@@ -86,7 +85,7 @@ impl Value {
             Value::ValueBoolean { val } => format!("{}", val),
             Value::ValueTime { val } => format!("{}", val),
             // always end a URL with a space, because it's the easiest way to tell when to stop reading
-            Value::ValueList { item_type, vals } => {
+            Value::ValueList { item_type: _, vals } => {
                 let mut buf = String::new();
                 buf.push('[');
                 let mut first = true;
@@ -490,9 +489,8 @@ impl Error for TypeSerializationError { }
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
-    use bigdecimal::{BigDecimal, FromPrimitive};
+    use bigdecimal::{BigDecimal};
     use num_bigint::BigInt;
-    use reqwest::Url;
     use crate::types::Type;
     use crate::values::Value;
     use crate::values::ValueReader;

@@ -1,11 +1,7 @@
-use std::io::Stdout;
-use std::sync::{Arc, LockResult, Mutex};
-use std::time::Duration;
-use futures::executor::block_on;
-use crate::analyzer::Pipe::Standard;
+use std::sync::{Arc, Mutex};
 use crate::environment::Environment;
 use crate::evaluator::EvaluationError;
-use crate::types::{Function, ReturnState, Type};
+use crate::types::{Function};
 use crate::values::Value;
 
 
@@ -61,7 +57,7 @@ impl RunStatus {
 
 impl FunctionRunner {
 
-    pub async fn start(&mut self, env : Arc<Mutex<Environment>>, run_status : Arc<Mutex<RunStatus>>) -> Result<Value, EvaluationError> {
+    pub async fn start(&mut self, env : Arc<Mutex<Environment>>, run_status : Arc<Mutex<RunStatus>>) -> Result<Option<Value>, EvaluationError> {
         let result = self.start_sync(env, run_status.clone(), None);
         match run_status.lock() {
             Ok(mut rs) => {
@@ -75,10 +71,10 @@ impl FunctionRunner {
         result
     }
 
-    fn start_sync(&mut self, env : Arc<Mutex<Environment>>, run_status : Arc<Mutex<RunStatus>>, carry_val : Option<Value>) -> Result<Value, EvaluationError> {
+    fn start_sync(&mut self, env : Arc<Mutex<Environment>>, run_status : Arc<Mutex<RunStatus>>, carry_val : Option<Value>) -> Result<Option<Value>, EvaluationError> {
         match self {
             FunctionRunner::ValueContainer(v) => {
-                Ok(v.to_owned())
+                Ok(Some(v.to_owned()))
             }
             FunctionRunner::PipeFunction {
                 func,
@@ -107,14 +103,21 @@ impl FunctionRunner {
                         Err(EvaluationError::new(format!("Invalid variable identifier [{}]", id).as_str()))
                     }
                     Some(v) => {
-                        Ok(v)
+                        Ok(Some(v))
                     }
                 }
             }
             FunctionRunner::Assignment(id, func) => {
                 let v = func.start_sync(env.clone(), run_status, carry_val)?;
-                env.lock().expect("Can't lock environment!").store_value(id, v.clone());
-                Ok(v)
+                match v {
+                    None => {
+                        Err(EvaluationError::new("Provided pipe expression returns no value. Unable to assign."))
+                    }
+                    Some(v) => {
+                        env.lock().expect("Can't lock environment!").store_value(id, v.clone());
+                        Ok(Some(v))
+                    }
+                }
             }
         }
     }
@@ -126,7 +129,7 @@ impl FunctionRunner {
         args: &mut Vec<FunctionRunner>,
         target: &mut Box<Option<FunctionRunner>>,
         run_status: Arc<Mutex<RunStatus>>,
-        carry_val: Option<Value>) -> Result<Value, EvaluationError> {
+        carry_val: Option<Value>) -> Result<Option<Value>, EvaluationError> {
         let arg_values = Self::run_arg_functions(env.clone(), args, &run_status, carry_val)?;
 
         Self::record_call_trace(func, &run_status);
@@ -136,7 +139,7 @@ impl FunctionRunner {
         if let Some(mut target_runner) = *target.clone() {
             target_runner.start_sync(env.clone(), run_status.clone(), Some(val))
         } else {
-            Ok(val)
+            Ok(Some(val))
         }
     }
 
@@ -146,7 +149,7 @@ impl FunctionRunner {
         args: &mut Vec<FunctionRunner>,
         target: &mut Box<Option<FunctionRunner>>,
         run_status: Arc<Mutex<RunStatus>>,
-        carry_val: Option<Value>) -> Result<Value, EvaluationError> {
+        carry_val: Option<Value>) -> Result<Option<Value>, EvaluationError> {
         let arg_values = Self::run_arg_functions(env.clone(), args, &run_status, carry_val)?;
 
         Self::record_call_trace(func, &run_status);
@@ -157,18 +160,39 @@ impl FunctionRunner {
         while fcall.mut_state().lock().expect("Can't unlock function state!").has_more() {
             let val = fcall.run()?;
             if let Some(mut target_runner) = *target.clone() {
-                let v = target_runner.start_sync(
-                    env.clone(), run_status.clone(), Some(val))?;
-                result_vals.push(v.clone());
+                match target_runner.start_sync(
+                    env.clone(), run_status.clone(), Some(val))? {
+                    None => {
+                        return Err(EvaluationError::new("Pull function did not return a value!"));
+                    }
+                    Some(v) => {
+                        result_vals.push(v.clone());
+                    }
+                }
             } else {
                 result_vals.push(val.clone());
             }
         }
 
-        Ok(Value::ValueList {
-            item_type,
-            vals: result_vals,
-        })
+        if let Some(mut target_runner) = *target.clone() {
+            let collected_opt = target_runner.collect_sync(env.clone(), run_status.clone(), None)?;
+            match collected_opt {
+                None => {
+                    Ok(Some(Value::ValueList {
+                        item_type,
+                        vals: result_vals,
+                    }))
+                }
+                Some(v) => {
+                    Ok(Some(v))
+                }
+            }
+        } else {
+            Ok(Some(Value::ValueList {
+                item_type,
+                vals: result_vals,
+            }))
+        }
     }
 
     /// collect the results of a downstream push function
@@ -184,7 +208,7 @@ impl FunctionRunner {
                 match *target.clone() {
                     None => { Ok(Some(result))}
                     Some(mut t) => {
-                        Ok(Some(t.start_sync(env, run_status, Some(result))?))
+                        Ok(t.start_sync(env, run_status, Some(result))?)
                     }
                 }
             }
@@ -225,8 +249,14 @@ impl FunctionRunner {
 
         let mut arg_values = vec![];
         for arg in args {
-            let v = arg.start_sync(env.clone(), run_status.clone(), None)?;
-            arg_values.push(v);
+            match arg.start_sync(env.clone(), run_status.clone(), None)? {
+                None => {
+                    return Err(EvaluationError::new("Argument did not return a value"));
+                }
+                Some(v) => {
+                    arg_values.push(v);
+                }
+            }
         }
         if let Some(v) = carry_val {
             arg_values.push(v)
@@ -238,7 +268,6 @@ impl FunctionRunner {
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
-    use std::time::Duration;
     use futures::executor::block_on;
     use num_bigint::BigInt;
     use crate::environment::Environment;
@@ -268,7 +297,7 @@ mod tests {
         let f = async {
             runner.start(env, run_status.clone()).await
         };
-        if let Ok(Value::ValueString { val }) = block_on(f) {
+        if let Ok(Some(Value::ValueString { val })) = block_on(f) {
             assert_eq!(val, String::from("hi"))
         } else {
             panic!("Expected match")
@@ -289,7 +318,7 @@ mod tests {
         };
 
         let run_status = RunStatus::new();
-        if let Ok(Value::ValueVoid) = block_on(async {
+        if let Ok(Some(Value::ValueVoid)) = block_on(async {
             let result = runner.start(env, run_status.clone());
             assert_eq!(RunProgress::InProgress, run_status.lock().unwrap().progress);
             result.await
@@ -340,8 +369,8 @@ mod tests {
         let f = async {
             runner.start(env, run_status.clone()).await
         };
-        if let Ok(Value::ValueIntegral { val }) = block_on(f) {
-            assert_eq!(val, BigInt::from(8))
+        if let Ok(Some(Value::ValueIntegral { val })) = block_on(f) {
+            assert_eq!(val, BigInt::from(8u16))
         } else {
             panic!("Expected match")
         }
