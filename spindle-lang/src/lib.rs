@@ -1,3 +1,5 @@
+extern crate core;
+
 pub mod scanner;
 pub mod environment;
 pub mod parser;
@@ -11,4 +13,4 @@ pub mod external_resources;
 mod tokens;
 mod function_resolver;
 mod type_reader;
-mod function_runner;
+mod function_composer;

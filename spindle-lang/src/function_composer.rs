@@ -1,33 +1,99 @@
+use core::panicking::panic;
 use std::sync::{Arc, Mutex};
+use crate::analyzer::{Sem, SemanticExpression, TypeError};
 use crate::environment::Environment;
 use crate::evaluator::EvaluationError;
 use crate::types::{Function};
 use crate::values::Value;
 
+/// grammar for function composition
+///
+/// e.g. (f |> f | (f |> f | f <| f)) | f
+/// e.g. f | f
+/// e.g. f | f <|> f
+///
+/// Assignment := Var
+/// PipeChain := f (Pipe (PipeChain | PullChain))?
+/// PullChain := f PullPipe PipeChain PushPipe f
 
 
-#[derive(Clone)]
-enum FunctionRunner {
-    ValueContainer(Value),
-    VarReference(String),
-    Assignment(String, Box<FunctionRunner>),
-    PipeFunction {
-        func : Function,
-        args : Vec<FunctionRunner>,
-        target : Box<Option<FunctionRunner>>,
-    },
-    PullFunction {
-        func : Function,
-        args : Vec<FunctionRunner>,
-        target : Box<Option<FunctionRunner>>,
-    },
-    PushFunction {
-        func : Function,
-        args : Vec<FunctionRunner>,
-        target : Box<Option<FunctionRunner>>,
+pub struct FunctionComposer {
+
+}
+
+impl FunctionComposer {
+
+    pub fn parse(expr : SemanticExpression) -> Result<FunctionRunner, TypeError> {
+        match expr {
+            se @ SemanticExpression::PipedCommand { .. } => {
+                FunctionComposer::parse_expr(Box::from(se))
+            }
+            SemanticExpression::Setter(var_name, expr) => {
+                Ok(FunctionRunner::Assignment(
+                    var_name.clone(),
+                    Box::from(FunctionComposer::parse_expr(expr.clone())?)))
+            }
+        }
+    }
+
+    fn parse_expr(expr : Box<SemanticExpression>) -> Result<FunctionRunner, TypeError> {
+        match *expr {
+            SemanticExpression::PipedCommand {
+                sem,
+                pipe } => {
+                todo!()
+            }
+            SemanticExpression::Setter(_, _) => {
+                panic!("Shouldn't be able to get here!")
+            }
+        }
+    }
+
+    fn parse_sem(sem : Sem) -> Result<FunctionRunner, TypeError> {
+        match sem {
+            Sem::FnCall(f, r, args) => {
+
+            }
+            Sem::ValueCarry(t) => {}
+            Sem::ValueIntegral(v) => { Ok(FunctionRunner::ValueContainer(v))}
+            Sem::ValueFractional(v) => {Ok(FunctionRunner::ValueContainer(v))}
+            Sem::ValueString(v) => {Ok(FunctionRunner::ValueContainer(v))}
+            Sem::ValueBoolean(v) => {Ok(FunctionRunner::ValueContainer(v))}
+            Sem::ValueTime(v) => {Ok(FunctionRunner::ValueContainer(v))}
+            Sem::ValueList(v) => {}
+            Sem::ValueProperty(n, v) => {}
+            Sem::ValuePropertySet(ps) => {}
+            Sem::ValueResource(v) => {}
+            Sem::ValueType(t) => {}
+            Sem::Variable(n, v) => {Ok(FunctionRunner::VarReference(n))}
+            Sem::Void => {}
+        }
+        todo!()
     }
 }
 
+
+#[derive(Clone)]
+pub enum FunctionRunner {
+    ValueContainer(Value),
+    VarReference(String),
+    Assignment(String, Box<FunctionRunner>),
+    Runner {
+        func : Function,
+        args : Vec<FunctionRunner>,
+    },
+    PipeChain {
+        runners : Vec<FunctionRunner>,
+    },
+    PullChain {
+        pull_runner : Box<FunctionRunner>,
+        pipe_chain : Option<FunctionRunner>,
+        push_runner : Box<FunctionRunner>,
+    }
+}
+
+/// Used to report back to the UI whether a pipeline is in progress or complete; may be used for
+/// spinner-animation or similar purposes
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum RunProgress {
     InProgress,
@@ -76,26 +142,6 @@ impl FunctionRunner {
             FunctionRunner::ValueContainer(v) => {
                 Ok(Some(v.to_owned()))
             }
-            FunctionRunner::PipeFunction {
-                func,
-                args,
-                target } => {
-                Self::start_pipe_sync(env, func, args, target, run_status, carry_val)
-            }
-            FunctionRunner::PullFunction {
-                func,
-                args,
-                target } => {
-                Self::start_pull_sync(env, func, args, target, run_status, carry_val)
-            }
-            FunctionRunner::PushFunction {
-                func,
-                args,
-                target } => {
-
-                // treat it like a normal pipe, and handle the 'Collect' phase when the pull is complete
-                Self::start_pipe_sync(env, func, args, target, run_status, carry_val)
-            }
             FunctionRunner::VarReference(id) => {
                 let e = env.lock().expect("Cant get env lock for some reason");
                 match e.resolve_val(id.clone().as_str()) {
@@ -118,6 +164,20 @@ impl FunctionRunner {
                         Ok(Some(v))
                     }
                 }
+            }
+            FunctionRunner::PipeChain { runners } => {
+
+            }
+            FunctionRunner::PullChain {
+                pull_runner,
+                pipe_chain,
+                push_runner } => {
+
+            }
+            FunctionRunner::Runner {
+                func,
+                args } => {
+
             }
         }
     }
@@ -271,7 +331,7 @@ mod tests {
     use futures::executor::block_on;
     use num_bigint::BigInt;
     use crate::environment::Environment;
-    use crate::function_runner::{FunctionRunner, RunProgress, RunStatus};
+    use crate::function_composer::{FunctionRunner, RunProgress, RunStatus};
     use crate::functions;
     use crate::functions::get_builtins;
     use crate::types::{Function, Type};
@@ -306,6 +366,12 @@ mod tests {
         let unlocked = run_status.lock().expect("Unable to unlock run status!");
         assert_eq!(1, unlocked.call_trace.len());
         assert_eq!("id", unlocked.call_trace.get(0).unwrap().as_str());
+    }
+
+    #[test]
+    fn test_pull_push() {
+        let env = setup_env();
+
     }
 
     #[test]

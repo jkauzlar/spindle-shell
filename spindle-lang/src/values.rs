@@ -135,6 +135,24 @@ impl Value {
         }
     }
 
+    /// if this is an integral, then return the value, otherwise zero
+    pub fn as_bigint(&self) -> BigInt {
+        if let Value::ValueIntegral { val } = self {
+            val.clone()
+        } else {
+            BigInt::from(0)
+        }
+    }
+
+    /// if this is a List, return vector of values, otherwise vector containing this item
+    pub fn as_vec(&self) -> Vec<Value> {
+        if let Value::ValueList { item_type, vals } = self {
+            vals.clone()
+        } else {
+            vec![self.clone()]
+        }
+    }
+
     pub fn get_default(t : &Type) -> Self {
         match t {
             Type::String => { Value::str_val("")}

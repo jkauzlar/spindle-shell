@@ -4,8 +4,11 @@ use std::time::Duration;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use num_bigint::BigInt;
 use regex::Regex;
-use crate::types::{Function, FunctionArgs, Signature, Type};
+use crate::evaluator::EvaluationError;
+use crate::types::{Function, FunctionArgs, PushState, Signature, Type};
+use crate::types::Type::Generic;
 use crate::values::Value;
+use crate::values::Value::ValueList;
 
 /// Defines built-in functions for operators and coercions
 
@@ -103,6 +106,71 @@ impl SpecialFunctions {
                         Some(v) => {
                             std::thread::sleep(Duration::from_secs(1))
                         }
+                    }
+                }
+                Ok(Value::ValueVoid)
+            }
+        )
+    }
+
+    pub fn count() -> Function {
+        Function::create(
+            "count",
+            Signature {
+                value : Type::Integral,
+                arguments: vec![Type::vararg(Type::generic("T"))],
+                resource_type : None,
+            },
+            |mut args : FunctionArgs | {
+                match args.push_state {
+                    PushState::Setup => {
+                        args.init_state("count", Value::int_val(0));
+                    }
+                    PushState::Push => {
+                        args.update_state("count",
+                                          |v| Value::ValueIntegral {
+                                              val : v.as_bigint().add(BigInt::from(1i8))
+                                          })
+                    }
+                    PushState::Collect => {
+                        args.state_value("count")
+                    }
+                }
+                Ok(Value::ValueVoid)
+            }
+        )
+    }
+
+    pub fn list() -> Function {
+        Function::create(
+            "list",
+            Signature {
+                value: Type::list_of(Type::generic("T")),
+                arguments: vec![Type::vararg(Type::generic("T"))],
+                resource_type: None,
+            },
+            |mut args : FunctionArgs | {
+                match args.push_state {
+                    PushState::Setup => {
+                        args.init_state("list", ValueList {
+                            item_type: Type::Void,
+                            vals: args.vals.clone()
+                        });
+                    }
+                    PushState::Push => {
+                        if args.vals.len() == 0 {
+                            return Err(EvaluationError::new("list function requires one or more arguments"));
+                        }
+                        args.update_state("list", | ls | {
+                            let mut updated_ls = ls.as_list();
+                            for v in args.vals {
+                                updated_ls.push(v)
+                            }
+                            updated_ls
+                        });
+                    }
+                    PushState::Collect => {
+                        return Ok(args.state_value("list").expect("Uninitialized state key 'list'"));
                     }
                 }
                 Ok(Value::ValueVoid)

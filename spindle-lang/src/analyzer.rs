@@ -322,6 +322,7 @@ impl SemanticAnalyzer<'_> {
 
 }
 
+#[derive(Clone)]
 pub enum SemanticExpression {
     PipedCommand {
         sem : Sem,

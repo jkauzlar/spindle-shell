@@ -247,6 +247,7 @@ impl Display for Signature {
 /// the final result (Collect), which will be passed either to the user or through the next pipe
 #[derive(Clone)]
 pub enum PushState {
+    Setup,
     Push,
     Collect,
 }
@@ -255,21 +256,40 @@ pub enum PushState {
 pub struct FunctionArgs {
     pub res : Option<IOResource>,
     pub vals : Vec<Value>,
+    pub state : Arc<Mutex<FunctionState>>,
     pub push_state : PushState,
 }
 
 impl FunctionArgs {
-    pub fn new(vals : Vec<Value>) -> Self {
+    pub fn new(vals : Vec<Value>, state : Arc<Mutex<FunctionState>>) -> Self {
         FunctionArgs {
             res : None,
             vals,
+            state,
             push_state: PushState::Push,
+        }
+    }
+
+    pub fn init_state(&mut self, k : &str, initial_val : Value) {
+        let mut st  = self.state.lock().expect("Unable to unlock FunctionArg::state!");
+        st.state_map.insert(String::from(k), initial_val);
+    }
+
+    pub fn update_state(&mut self, k : &str, f : fn(&Value) -> Value) {
+        let mut st  = self.state.lock().expect("Unable to unlock FunctionArg::state!");
+        if let Some(updated) = st.state_map.get(k).map(f) {
+            st.state_map.insert(String::from(k), updated);
         }
     }
 
     pub fn with_resource(&mut self, res : IOResource) -> Self {
         self.res = Some(res);
         self.clone()
+    }
+
+    pub fn state_value(&self, k : &str) -> Option<Value> {
+        let mut st  = self.state.lock().expect("Unable to unlock FunctionArg::state!");
+        st.state_map.get(k).map(|v| v.clone())
     }
 
     pub fn collect(&mut self) -> Self {
@@ -335,7 +355,7 @@ impl FunctionCall {
     }
 
     pub fn run(&self) -> Result<Value, EvaluationError> {
-        let mut args = FunctionArgs::new(self.args.clone());
+        let mut args = FunctionArgs::new(self.args.clone(), self.state.clone());
         if let Some(res) = &self.resource {
             args = args.with_resource(res.clone()).push()
         }
@@ -344,7 +364,7 @@ impl FunctionCall {
     }
 
     pub fn collect(&self) -> Result<Value, EvaluationError> {
-        let mut args = FunctionArgs::new(self.args.clone());
+        let mut args = FunctionArgs::new(self.args.clone(), self.state.clone());
         if let Some(res) = &self.resource {
             args = args.with_resource(res.clone()).collect()
         }
