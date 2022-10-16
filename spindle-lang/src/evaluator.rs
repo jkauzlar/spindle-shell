@@ -90,21 +90,21 @@ impl Evaluator<'_> {
             Sem::Variable(_, sem) => {
                 self.eval_sem(&sem, carry_val.clone())
             }
-            Sem::ValueProperty(id, sem) => {
+            Sem::ExprProperty(id, sem) => {
                 let v = self.eval_sem(&sem, carry_val.clone())?;
                 Ok(Value::ValueProperty {
                     name: id,
                     val: Box::new(v),
                 })
             }
-            Sem::ValuePropertySet(sems) => {
+            Sem::ExprPropertySet(sems) => {
                 let mut vals = vec![];
                 for s in sems {
                     vals.push(self.eval_sem(&Box::new(s), carry_val.clone())?);
                 }
                 Ok(Value::ValuePropertySet { vals })
             }
-            Sem::ValueList(sem_vec) => {
+            Sem::ExprList(sem_vec) => {
                 if sem_vec.is_empty() {
                     return Err(EvaluationError::new("List cannot be empty"));
                 }

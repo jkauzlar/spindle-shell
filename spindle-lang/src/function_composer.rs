@@ -1,9 +1,9 @@
 use core::panicking::panic;
 use std::sync::{Arc, Mutex};
-use crate::analyzer::{Sem, SemanticExpression, TypeError};
+use crate::analyzer::{Sem, SemanticExpression, Typed, TypeError};
 use crate::environment::Environment;
 use crate::evaluator::EvaluationError;
-use crate::types::{Function};
+use crate::types::{Function, Type};
 use crate::values::Value;
 
 /// grammar for function composition
@@ -60,12 +60,12 @@ impl FunctionComposer {
             Sem::ValueString(v) => {Ok(FunctionRunner::ValueContainer(v))}
             Sem::ValueBoolean(v) => {Ok(FunctionRunner::ValueContainer(v))}
             Sem::ValueTime(v) => {Ok(FunctionRunner::ValueContainer(v))}
-            Sem::ValueList(v) => {}
-            Sem::ValueProperty(n, v) => {}
-            Sem::ValuePropertySet(ps) => {}
+            Sem::ExprList(v) => {}
+            Sem::ExprProperty(n, v) => {}
+            Sem::ExprPropertySet(ps) => {}
             Sem::ValueResource(v) => {}
             Sem::ValueType(t) => {}
-            Sem::Variable(n, v) => {Ok(FunctionRunner::VarReference(n))}
+            Sem::Variable(n, v) => {Ok(FunctionRunner::VarReference(n, v.clone()))}
             Sem::Void => {}
         }
         todo!()
@@ -76,7 +76,7 @@ impl FunctionComposer {
 #[derive(Clone)]
 pub enum FunctionRunner {
     ValueContainer(Value),
-    VarReference(String),
+    VarReference(String, Value),
     Assignment(String, Box<FunctionRunner>),
     Runner {
         func : Function,
@@ -142,7 +142,7 @@ impl FunctionRunner {
             FunctionRunner::ValueContainer(v) => {
                 Ok(Some(v.to_owned()))
             }
-            FunctionRunner::VarReference(id) => {
+            FunctionRunner::VarReference(id, t) => {
                 let e = env.lock().expect("Cant get env lock for some reason");
                 match e.resolve_val(id.clone().as_str()) {
                     None => {

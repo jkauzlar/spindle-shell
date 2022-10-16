@@ -161,13 +161,10 @@ impl SemanticAnalyzer<'_> {
                 if carry_type.is_some() {
                     return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
                 }
-                match self.resolve_var(id) {
-                    None => {
-                        Err(TypeError::new("todo type error VariableReference"))
-                    }
-                    Some(sem_value) => {
-                        Ok(Sem::Variable(id.clone(), Box::new(sem_value)))
-                    }
+                if let Some(v) = self.env.resolve_val(id) {
+                    Ok(Sem::Variable(id.clone(), v.clone()))
+                } else {
+                    Err(TypeError::new(format!("Unresolved reference `{}`", id).as_str()))
                 }
             }
             Expr::ValueIntegral(v) => {
@@ -192,7 +189,7 @@ impl SemanticAnalyzer<'_> {
                 if carry_type.is_some() {
                     return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
                 }
-                Ok(Sem::ValueType(t.clone()))
+                Ok(Sem::ValueType(Value::ValueTypeLiteral(t.clone())))
             }
             Expr::ValueBoolean(v) => {
                 if carry_type.is_some() {
@@ -204,6 +201,7 @@ impl SemanticAnalyzer<'_> {
                 if carry_type.is_some() {
                     return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
                 }
+
                 Ok(Sem::ValueResource(res.clone()))
             }
             Expr::FnResource(res) => {
@@ -217,7 +215,7 @@ impl SemanticAnalyzer<'_> {
                     return Err(TypeError::new("Illegal attempt to pipe into a non-function"));
                 }
                 let arg_sem = self.analyze_expr(prop_exr, None)?;
-                Ok(Sem::ValueProperty(prop_name.clone(), Box::new(arg_sem)))
+                Ok(Sem::ExprProperty(prop_name.clone(), Box::new(arg_sem)))
             }
             Expr::ValuePropertySet(props) => {
                 if carry_type.is_some() {
@@ -227,7 +225,7 @@ impl SemanticAnalyzer<'_> {
                 for prop in props {
                     let expr = self.analyze_expr(prop, None)?;
                     match expr {
-                        p @ Sem::ValueProperty(_, _ ) => {
+                        p @ Sem::ExprProperty(_, _ ) => {
                             prop_sems.push(p);
                         }
                         _ => {
@@ -236,7 +234,7 @@ impl SemanticAnalyzer<'_> {
                     }
                 }
 
-                Ok(Sem::ValuePropertySet(prop_sems))
+                Ok(Sem::ExprPropertySet(prop_sems))
             }
             Expr::ValueList(exprs) => {
                 if carry_type.is_some() {
@@ -267,7 +265,7 @@ impl SemanticAnalyzer<'_> {
                         }
                     }
                 }
-                Ok(Sem::ValueList(sems))
+                Ok(Sem::ExprList(sems))
             }
             _ => {  Err(TypeError::new(""))}
         }
@@ -384,12 +382,14 @@ pub enum Sem {
     ValueString(Value),
     ValueBoolean(Value),
     ValueTime(Value),
-    ValueList(Vec<Sem>),
-    ValueProperty(String, Box<Sem>),
-    ValuePropertySet(Vec<Sem>),
+    ValueType(Value),
+    // parameterized values need Sem parameters since they're not fully evaluated yet
+    ExprList(Vec<Sem>),
+    ExprProperty(String, Box<Sem>),
+    ExprPropertySet(Vec<Sem>),
     ValueResource(IOResource),
-    ValueType(Type),
-    Variable(String, Box<Sem>),
+    // We need to resolve the variable before placing it into evaluation context for type checking
+    Variable(String, Value),
     Void,
 }
 
@@ -397,7 +397,7 @@ impl Sem {
     pub fn from_value(val : Value) -> Self {
         match val {
             Value::ValueTypeLiteral(t) => {
-                Sem::ValueType(t)
+                Sem::ValueType(Value::ValueTypeLiteral(t))
             }
             Value::ValueString { .. } => {
                 Sem::ValueString(val)
@@ -419,11 +419,11 @@ impl Sem {
                 for v in vals {
                     sem_vec.push(Sem::from_value(v));
                 }
-                Sem::ValueList(sem_vec)
+                Sem::ExprList(sem_vec)
             }
             Value::ValueProperty { name, val } => {
                 let sem = Sem::from_value(*val);
-                Sem::ValueProperty(name, Box::new(sem))
+                Sem::ExprProperty(name, Box::new(sem))
             }
             Value::ValuePropertySet { vals } => {
                 let mut sems = vec![];
@@ -431,7 +431,7 @@ impl Sem {
                     sems.push(Sem::from_value(val));
                 }
 
-                Sem::ValuePropertySet(sems)
+                Sem::ExprPropertySet(sems)
             }
             Value::ValueVoid => {
                 Sem::Void
@@ -473,7 +473,7 @@ impl Display for Sem {
             Sem::Variable(name, sem) => {
                 f.write_str(format!("(${} : {})", name, sem.get_type()).as_str())
             }
-            Sem::ValueList(sems) => {
+            Sem::ExprList(sems) => {
                 let mut sems_strs = vec![];
                 for sem in sems {
                     sems_strs.push(sem.to_string());
@@ -482,10 +482,10 @@ impl Display for Sem {
 
                 f.write_str(format!("[{}]", sems_str).as_str())
             }
-            Sem::ValueProperty(id,sem) => {
+            Sem::ExprProperty(id, sem) => {
                 f.write_str(format!("Property({}:{})", id, sem).as_str())
             }
-            Sem::ValuePropertySet(props) => {
+            Sem::ExprPropertySet(props) => {
                 let mut prop_strs = vec![];
                 for prop in props {
                     prop_strs.push(prop.to_string());
@@ -561,13 +561,13 @@ impl Typed for Sem {
             Sem::ValueBoolean(_) => { Type::Boolean }
             Sem::ValueTime(_) => { Type::Time}
             Sem::Variable(_, sem) => { sem.get_type()}
-            Sem::ValueList(sems) => {
+            Sem::ExprList(sems) => {
                 // a list cannot be created empty, therefore the unwrap is safe
                 Type::List(Box::new(sems.get(0).unwrap().get_type()))
             }
-            Sem::ValueProperty(name, sem) => {
+            Sem::ExprProperty(name, sem) => {
                 Type::Property(name.clone(), Box::new(sem.get_type())) }
-            Sem::ValuePropertySet(props) => {
+            Sem::ExprPropertySet(props) => {
                 Type::PropertySet(props.iter().map(|p| p.get_type()).collect())
             }
             Sem::ValueCarry(t) => {

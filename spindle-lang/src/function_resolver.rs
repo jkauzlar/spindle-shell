@@ -529,7 +529,7 @@ mod test {
         env.put_function(my_fn2.clone());
 
         let arg_sems = &vec![
-            Sem::ValueList(
+            Sem::ExprList(
                 vec![
                     Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(1u8) }),
                     Sem::ValueFractional(Value::ValueFractional { val: BigDecimal::from(2u8) }),
@@ -564,13 +564,13 @@ mod test {
         }
 
         let arg_sems2 = &vec![
-            Sem::ValueList(
+            Sem::ExprList(
                 vec![
                     Sem::ValueFractional(Value::frac_val(1.0)),
                     Sem::ValueFractional(Value::frac_val(2.0)),
                 ]
             ),
-            Sem::ValueList(
+            Sem::ExprList(
                 vec![
                     Sem::ValueFractional(Value::frac_val(3.0)),
                     Sem::ValueFractional(Value::frac_val(4.0)),
