@@ -12,9 +12,10 @@ use crate::values::Value;
 /// e.g. f | f
 /// e.g. f | f <|> f
 ///
-/// Assignment := Var
-/// PipeChain := f (Pipe (PipeChain | PullChain))?
-/// PullChain := f PullPipe PipeChain PushPipe f
+/// Assignment := ValueExpr
+/// ValueExpr := var | PipeChain
+/// PipeChain := f ((|) (PipeChain | PullChain))?
+/// PullChain := f (|>) PipeChain (<|) f
 
 
 pub struct FunctionComposer {
