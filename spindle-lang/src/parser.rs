@@ -520,7 +520,7 @@ impl Display for Command {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Expr {
     Setter(String, Box<Expr>),
     Pipeline(Box<Expr>, Token, Box<Expr>),

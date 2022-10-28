@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter};
 use crate::environment::Environment;
 use crate::external_resources::IOResource;
+use crate::functions::SpecialFunctions;
 use crate::parser::Expr;
 use crate::tokens::{EnumTypedVariant, Token, TokenType};
 use crate::types::{Function, Type};
@@ -43,15 +44,68 @@ impl SemanticAnalyzer<'_> {
                         })
                     }
                     Pipe::Push => {
-                        // check that the outgoing type supports collection
-                        Err(TypeError::new("Unsupported pipe"))
+                        let right_sem = self.create_sem_tree(right_expr, Some(left_sem.get_type()))?;
+
+                        // check that the outgoing (right-side) type supports collection
+                        if let SemanticExpression::PipedCommand { sem : Sem::FnCall(f, _, _), .. } = right_sem.clone() {
+                            Self::handle_push_fn(f, &left_sem, &sem_pipe, &right_sem)
+                        } else if let SemanticExpression::PipedCommand { sem: Sem::ValueResource(r), .. } = right_sem.clone() {
+                            match self.resolve_fn(&SpecialFunctions::push_fn_name(), &vec![], Some(left_sem.get_type()), Some(r.clone())) {
+                                None => {
+                                    Err(TypeError::new(format!("No push function for resource of type id [{}]", r.clone().resource_type.id).as_str()))
+                                }
+                                Some(Sem::FnCall(f, _, _)) => {
+                                    Self::handle_push_fn(f, &left_sem, &sem_pipe, &right_sem)
+                                }
+                                _ => {
+                                    panic!("Shouldn't get here! It means that resolve_fn didn't return a Sem::FnCall")
+                                }
+                            }
+                        } else {
+                            match self.resolve_fn(&SpecialFunctions::push_fn_name(), &vec![left_sem.clone()], None, None) {
+                                None => {
+                                    Err(TypeError::new(format!("No push function for type [{}]", left_sem.get_type()).as_str()))
+                                }
+                                Some(Sem::FnCall(f, _, _)) => {
+                                    Self::handle_push_fn(f, &left_sem, &sem_pipe, &right_sem)
+                                }
+                                _ => {
+                                    panic!("Shouldn't get here! It means that resolve_fn didn't return a Sem::FnCall")
+                                }
+                            }
+                        }
                     }
                     Pipe::Pull => {
                         // check that the incoming type is streamable
-                        if let Sem::FnCall(f, _, _) = left_sem {
-
+                        if let Sem::FnCall(f, _, _) = left_sem.clone() {
+                            self.handle_pull_fn(f, &left_sem, &sem_pipe, &right_expr)
+                        } else if let Sem::ValueResource(r) = left_sem.clone() {
+                            // try to resolve function 'pull' that accepts the given type or resource and returns a stream
+                            match self.resolve_fn(&SpecialFunctions::pull_fn_name(), &vec![], None, Some(r.clone())) {
+                                None => {
+                                    Err(TypeError::new(format!("No pull function for resource of type id [{}]", r.clone().resource_type.id).as_str()))
+                                }
+                                Some(Sem::FnCall(f, _, _)) => {
+                                    self.handle_pull_fn(f, &left_sem, &sem_pipe, &right_expr)
+                                }
+                                _ => {
+                                    panic!("Shouldn't get here! It means that resolve_fn didn't return a Sem::FnCall")
+                                }
+                            }
+                        } else {
+                            // try to resolve function 'pull' that accepts the given type returns a stream
+                            match self.resolve_fn(&SpecialFunctions::pull_fn_name(), &vec![left_sem.clone()], None, None) {
+                                None => {
+                                    Err(TypeError::new(format!("No pull function for type [{}]", left_sem.get_type()).as_str()))
+                                }
+                                Some(Sem::FnCall(f, _, _)) => {
+                                    self.handle_pull_fn(f, &left_sem, &sem_pipe, &right_expr)
+                                }
+                                _ => {
+                                    panic!("Shouldn't get here! It means that resolve_fn didn't return a Sem::FnCall")
+                                }
+                            }
                         }
-                        Err(TypeError::new("Unsupported pipe"))
                     }
                     Pipe::Stream => {
                         // check that the incoming type is streamable
@@ -73,6 +127,29 @@ impl SemanticAnalyzer<'_> {
                     }
                 }
             }
+        }
+    }
+
+    fn handle_push_fn(f: Function, left_sem: &Sem, sem_pipe: &Pipe, right_sem: &SemanticExpression) -> Result<SemanticExpression, TypeError> {
+        if f.does_collect() {
+            Ok(SemanticExpression::PipedCommand {
+                sem: left_sem.clone(),
+                pipe: Some(((*sem_pipe).clone(), Box::new(right_sem.clone())))
+            })
+        } else {
+            Err(TypeError::new(format!("Function [{}] is not a collector function", f).as_str()))
+        }
+    }
+
+    fn handle_pull_fn(&mut self, f: Function, left_sem: &Sem, sem_pipe: &Pipe, right_expr: &Box<Expr>) -> Result<SemanticExpression, TypeError> {
+        if let Some(stream_type) = f.stream_type() {
+            let right_sem = self.create_sem_tree(Box::new((**right_expr).clone()), Some(stream_type))?;
+            Ok(SemanticExpression::PipedCommand {
+                sem: left_sem.clone(),
+                pipe: Some(((*sem_pipe).clone(), Box::new(right_sem))),
+            })
+        } else {
+            Err(TypeError::new("Unable to pull from function"))
         }
     }
 
@@ -353,7 +430,7 @@ impl Display for SemanticExpression {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Pipe {
     Standard,
     Push,
@@ -434,6 +511,9 @@ impl Sem {
                 Sem::ExprPropertySet(sems)
             }
             Value::ValueVoid => {
+                Sem::Void
+            }
+            Value::ValueStream { .. } => {
                 Sem::Void
             }
         }

@@ -23,10 +23,12 @@ pub enum Type {
     PropertySet(Vec<Type>), // arguments must be properties
     TypeLiteral,
     Void,
-    /// Signature type only; not a Value type
+    /// Signature argument type only; not a Value type
     Generic(String),
-    /// Signature type only; not a Value type
+    /// Signature argument type only; not a Value type
     VarArgs(Box<Type>),
+    /// Signature return type only; used for pull functions
+    Stream(Box<Type>),
 }
 
 impl Type {
@@ -55,6 +57,14 @@ impl Type {
             _ => {
                 false
             }
+        }
+    }
+
+    pub fn stream_type(&self) -> Option<Type> {
+        match self {
+            Type::List(t) => Some(*t.clone()),
+            Type::Stream(t) => Some(*t.clone()),
+            _ => None
         }
     }
 
@@ -242,22 +252,11 @@ impl Display for Signature {
     }
 }
 
-/// For push functions, this serves to separate a function call into two operations, one being to
-/// place another item into the function's state (Push the item); and the other being to collect
-/// the final result (Collect), which will be passed either to the user or through the next pipe
-#[derive(Clone)]
-pub enum PushState {
-    Setup,
-    Push,
-    Collect,
-}
-
 #[derive(Clone)]
 pub struct FunctionArgs {
     pub res : Option<IOResource>,
     pub vals : Vec<Value>,
     pub state : Arc<Mutex<FunctionState>>,
-    pub push_state : PushState,
 }
 
 impl FunctionArgs {
@@ -266,7 +265,6 @@ impl FunctionArgs {
             res : None,
             vals,
             state,
-            push_state: PushState::Push,
         }
     }
 
@@ -290,16 +288,6 @@ impl FunctionArgs {
     pub fn state_value(&self, k : &str) -> Option<Value> {
         let mut st  = self.state.lock().expect("Unable to unlock FunctionArg::state!");
         st.state_map.get(k).map(|v| v.clone())
-    }
-
-    pub fn collect(&mut self) -> Self {
-        self.push_state = PushState::Collect;
-        self.clone()
-    }
-
-    pub fn push(&mut self) -> Self {
-        self.push_state = PushState::Push;
-        self.clone()
     }
 
     pub fn get_unchecked(&self, idx : usize) -> &Value {
@@ -357,61 +345,27 @@ impl FunctionCall {
     pub fn run(&self) -> Result<Value, EvaluationError> {
         let mut args = FunctionArgs::new(self.args.clone(), self.state.clone());
         if let Some(res) = &self.resource {
-            args = args.with_resource(res.clone()).push()
+            args = args.with_resource(res.clone())
         }
 
         self.func.call(args)
     }
 
-    pub fn collect(&self) -> Result<Value, EvaluationError> {
-        let mut args = FunctionArgs::new(self.args.clone(), self.state.clone());
-        if let Some(res) = &self.resource {
-            args = args.with_resource(res.clone()).collect()
-        }
-
-        self.func.call(args)
-    }
-
-
 }
 
 
 
-/// used to communicate from the client to the function
-#[derive(Debug, Clone)]
-pub enum CallState {
-    New,
-    Continue,
-    Interrupt,
-}
-
-#[derive(Debug, Clone)]
-pub enum ReturnState {
-    HasMore,
-    Stop,
-}
 
 #[derive(Debug, Clone)]
 pub struct FunctionState {
-    pub call_state : CallState,
-    pub return_state : ReturnState,
     pub state_map : HashMap<String, Value>,
 }
 
 impl FunctionState {
     pub fn new() -> Self {
          Self {
-             call_state : CallState::New,
              state_map : HashMap::new(),
-             return_state : ReturnState::HasMore,
          }
-    }
-
-    pub fn has_more(&self) -> bool {
-        match self.return_state {
-            ReturnState::HasMore => { true }
-            ReturnState::Stop => { false }
-        }
     }
 }
 
@@ -419,7 +373,9 @@ impl FunctionState {
 pub struct Function {
     pub(crate) name : String,
     pub(crate) sig : Signature,
-    f : fn(FunctionArgs) -> Result<Value,EvaluationError>,
+    setup : Option<fn(FunctionArgs) -> Result<Value,EvaluationError>>,
+    apply : fn(FunctionArgs) -> Result<Value,EvaluationError>,
+    collect : Option<fn(FunctionArgs) -> Result<Value, EvaluationError>>,
 }
 
 impl Function {
@@ -435,15 +391,23 @@ impl Function {
                     .collect(),
                 resource_type: self.sig.resource_type.clone(),
             },
-            f: self.f,
+            setup: self.setup,
+            apply: self.apply,
+            collect: self.collect,
         }
     }
 
-    pub fn create(name : &str, sig : Signature, f : fn(FunctionArgs) -> Result<Value, EvaluationError>) -> Function {
+    pub fn does_collect(&self) -> bool {
+        self.collect.is_some()
+    }
+
+    pub fn create(name : &str, sig : Signature, apply : fn(FunctionArgs) -> Result<Value, EvaluationError>) -> Function {
         Function {
             name: String::from(name),
             sig,
-            f,
+            setup: None,
+            apply,
+            collect: None,
         }
     }
 
@@ -469,7 +433,11 @@ impl Function {
     }
 
     pub fn call(&self, args : FunctionArgs) -> Result<Value, EvaluationError> {
-        (self.f)(args)
+        (self.apply)(args)
+    }
+
+    pub fn stream_type(&self) -> Option<Type> {
+        self.sig.value.stream_type()
     }
 
 }
@@ -536,6 +504,9 @@ impl Display for Type {
             }
             Type::TypeLiteral => {
                 f.write_str("Type")
+            }
+            Type::Stream(t) => {
+                f.write_str(format!("Stream({})", t).as_str())
             }
         }
     }

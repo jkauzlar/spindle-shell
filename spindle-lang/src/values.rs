@@ -3,7 +3,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::str::{FromStr};
 use bigdecimal::{BigDecimal, FromPrimitive};
 use num_bigint::{BigInt};
-use crate::types::Type;
+use crate::types::{FunctionArgs, Type};
 
 #[derive(Debug,Clone, Eq, PartialEq)]
 pub enum Value {
@@ -42,6 +42,12 @@ pub enum Value {
     ValueList {
         item_type : Type,
         vals : Vec<Value>,
+    },
+
+    ValueStream {
+        item_type : Type,
+        has_more : fn(FunctionArgs) -> bool,
+        next: fn(FunctionArgs) -> Value,
     }
 }
 
@@ -73,6 +79,7 @@ impl Value {
                 Type::PropertySet(val_types)
             }
             Value::ValueTypeLiteral(_) => Type::TypeLiteral,
+            Value::ValueStream { item_type, .. } => { Type::Stream(Box::new(item_type.clone()))}
         }
     }
 
@@ -120,6 +127,9 @@ impl Value {
             }
             Value::ValueTypeLiteral(t) => {
                 format!("'{}", t)
+            }
+            Value::ValueStream { item_type, .. } => {
+                format!("({})|>", item_type)
             }
         }
     }

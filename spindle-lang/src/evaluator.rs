@@ -59,7 +59,7 @@ impl Evaluator<'_> {
                 Ok(Value::ValueVoid)
             }
             Sem::ValueType(t) => {
-                Ok(Value::ValueTypeLiteral(t))
+                Ok(t)
             }
             Sem::FnCall(func, res, args) => {
                 let mut arg_vals : Vec<Value> = vec!();
@@ -87,8 +87,8 @@ impl Evaluator<'_> {
             Sem::ValueTime(v) => {
                 Ok(v)
             }
-            Sem::Variable(_, sem) => {
-                self.eval_sem(&sem, carry_val.clone())
+            Sem::Variable(_, v) => {
+                Ok(v)
             }
             Sem::ExprProperty(id, sem) => {
                 let v = self.eval_sem(&sem, carry_val.clone())?;
