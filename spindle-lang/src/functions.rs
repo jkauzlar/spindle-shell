@@ -111,7 +111,7 @@ impl SpecialFunctions {
     }
 
     pub fn count() -> Function {
-        Function::create(
+        Function::create_collector(
             "count",
             Signature {
                 value : Type::Integral,
@@ -119,13 +119,53 @@ impl SpecialFunctions {
                 resource_type : None,
             },
             |mut args : FunctionArgs | {
-                todo!()
+                args.init_state("count", Value::int_val(0));
+                Ok(())
+            },
+            |mut args : FunctionArgs | {
+                args.update_state("count", |v| Value::ValueIntegral { val : v.as_bigint().add(1) });
+                Ok(Value::ValueVoid)
+            },
+            |mut args : FunctionArgs | {
+                Ok(args.state_value("count").unwrap().clone())
             }
         )
     }
 
+    pub fn list_stream() -> Function {
+        Function::create_stream_function(
+            SpecialFunctions::pull_fn_name().as_str(),
+            Signature {
+                value: Type::Stream(Box::new(Type::generic("T"))),
+                arguments: vec![Type::list_of(Type::generic("T"))],
+                resource_type: None
+            },
+            |call_st : FunctionArgs | {
+                if let Value::ValueList { item_type, .. } = call_st.get_unchecked(0) {
+                    return item_type.clone();
+                }
+                Type::Void
+            },
+            |mut call_st : FunctionArgs | {
+                call_st.init_state("idx", Value::int_val(0));
+                Ok(())
+            },
+            |call_st : FunctionArgs | {
+                let idx = call_st.state_value("idx").unwrap().as_bigint();
+                let num_args = call_st.get_unchecked(0).as_vec().len();
+                Ok(idx.lt(&BigInt::from(num_args)))
+            },
+            |call_st : FunctionArgs | {
+                let idx = call_st.state_value("idx").unwrap().as_bigint().to_usize().unwrap_or(0);
+                let list_vals = call_st.get_unchecked(0).as_vec();
+                let item = list_vals.get(idx).unwrap().clone();
+                Ok(item)
+            },
+        )
+    }
+
     pub fn list() -> Function {
-        Function::create(
+        Function::create_collector(
             "list",
             Signature {
                 value: Type::list_of(Type::generic("T")),
@@ -133,7 +173,22 @@ impl SpecialFunctions {
                 resource_type: None,
             },
             |mut args : FunctionArgs | {
-                todo!()
+                Ok(())
+            },
+            |mut args : FunctionArgs | {
+                if args.vals.len() > 0 {
+                    let t = args.get_unchecked(0).get_type();
+                    args.update_state("list",
+                                      |v| Value::ValueList {
+                                          item_type: t,
+                                          vals: v.as_vec().combine(&args.vals) });
+                }
+                Ok(args.state_value("list")
+                    .unwrap_or(Value::ValueList { item_type: Type::Void, vals: vec![] }))
+            },
+            |mut args : FunctionArgs | {
+                Ok(args.state_value("list")
+                    .unwrap_or(Value::ValueList { item_type: Type::Void, vals: vec![] }))
             }
         )
     }
@@ -406,4 +461,3 @@ pub fn get_builtins() -> Vec<Function> {
 
     funcs
 }
-

@@ -3,6 +3,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::str::{FromStr};
 use bigdecimal::{BigDecimal, FromPrimitive};
 use num_bigint::{BigInt};
+use crate::evaluator::EvaluationError;
 use crate::types::{FunctionArgs, Type};
 
 #[derive(Debug,Clone, Eq, PartialEq)]
@@ -46,8 +47,8 @@ pub enum Value {
 
     ValueStream {
         item_type : Type,
-        has_more : fn(FunctionArgs) -> bool,
-        next: fn(FunctionArgs) -> Value,
+        has_more : fn(FunctionArgs) -> Result<bool, EvaluationError>,
+        next: fn(FunctionArgs) -> Result<Value, EvaluationError>,
     }
 }
 

@@ -9,6 +9,7 @@ use crate::external_resources::{IOResource, ResourceType};
 use crate::type_reader::TypeReader;
 use crate::types::Type::Property;
 use crate::values::Value;
+use crate::values::Value::ValueStream;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum Type {
@@ -373,7 +374,7 @@ impl FunctionState {
 pub struct Function {
     pub(crate) name : String,
     pub(crate) sig : Signature,
-    setup : Option<fn(FunctionArgs) -> Result<Value,EvaluationError>>,
+    setup : Option<fn(FunctionArgs) -> Result<(),EvaluationError>>,
     apply : fn(FunctionArgs) -> Result<Value,EvaluationError>,
     collect : Option<fn(FunctionArgs) -> Result<Value, EvaluationError>>,
 }
@@ -408,6 +409,38 @@ impl Function {
             setup: None,
             apply,
             collect: None,
+        }
+    }
+
+    pub fn create_collector(name : &str, sig : Signature,
+                            setup : fn(FunctionArgs) -> Result<(), EvaluationError>,
+                            apply : fn(FunctionArgs) -> Result<Value, EvaluationError>,
+                            collect : fn(FunctionArgs) -> Result<Value, EvaluationError>) -> Function {
+        Function {
+            name : String::from(name),
+            sig,
+            setup: Some(setup),
+            apply,
+            collect: Some(collect),
+        }
+    }
+
+    pub fn create_stream_function(name : &str, sig : Signature, item_type_extractor : fn(FunctionArgs) -> Type,
+                                  setup : fn(FunctionArgs) -> Result<(), EvaluationError>,
+                                  has_more : fn(FunctionArgs) -> Result<bool, EvaluationError>,
+                                  next : fn(FunctionArgs) -> Result<Value, EvaluationError>) -> Function {
+        Function {
+            name : String::from(name),
+            sig,
+            setup : Some(setup),
+            apply : |args : FunctionArgs | {
+                Ok(Value::ValueStream {
+                    item_type : item_type_extractor(args),
+                    has_more,
+                    next
+                })
+            },
+            collect : None,
         }
     }
 
@@ -519,5 +552,3 @@ impl FromStr for Type {
         TypeReader::read(s)
     }
 }
-
-
