@@ -274,10 +274,11 @@ impl FunctionArgs {
         st.state_map.insert(String::from(k), initial_val);
     }
 
-    pub fn update_state(&mut self, k : &str, f : fn(&Value) -> Value) {
+    pub fn update_state(&mut self, k : &str, f : fn(&Self, &Value) -> Value) {
         let mut st  = self.state.lock().expect("Unable to unlock FunctionArg::state!");
-        if let Some(updated) = st.state_map.get(k).map(f) {
-            st.state_map.insert(String::from(k), updated);
+        if let Some(map_item) = st.state_map.get(k) {
+            let new_item = f(&self, map_item);
+            st.state_map.insert(String::from(k), new_item.clone());
         }
     }
 
@@ -422,25 +423,6 @@ impl Function {
             setup: Some(setup),
             apply,
             collect: Some(collect),
-        }
-    }
-
-    pub fn create_stream_function(name : &str, sig : Signature, item_type_extractor : fn(FunctionArgs) -> Type,
-                                  setup : fn(FunctionArgs) -> Result<(), EvaluationError>,
-                                  has_more : fn(FunctionArgs) -> Result<bool, EvaluationError>,
-                                  next : fn(FunctionArgs) -> Result<Value, EvaluationError>) -> Function {
-        Function {
-            name : String::from(name),
-            sig,
-            setup : Some(setup),
-            apply : |args : FunctionArgs | {
-                Ok(Value::ValueStream {
-                    item_type : item_type_extractor(args),
-                    has_more,
-                    next
-                })
-            },
-            collect : None,
         }
     }
 

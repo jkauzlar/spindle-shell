@@ -13,3 +13,4 @@ pub mod external_resources;
 mod tokens;
 mod function_resolver;
 mod type_reader;
+mod type_checker;

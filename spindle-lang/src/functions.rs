@@ -123,7 +123,7 @@ impl SpecialFunctions {
                 Ok(())
             },
             |mut args : FunctionArgs | {
-                args.update_state("count", |v| Value::ValueIntegral { val : v.as_bigint().add(1) });
+                args.update_state("count", |_, v : &Value| Value::ValueIntegral { val : v.as_bigint().add(1) });
                 Ok(Value::ValueVoid)
             },
             |mut args : FunctionArgs | {
@@ -133,34 +133,25 @@ impl SpecialFunctions {
     }
 
     pub fn list_stream() -> Function {
-        Function::create_stream_function(
+        Function::create(
             SpecialFunctions::pull_fn_name().as_str(),
             Signature {
                 value: Type::Stream(Box::new(Type::generic("T"))),
-                arguments: vec![Type::list_of(Type::generic("T"))],
+                arguments: vec![Type::vararg(Type::generic("T"))],
                 resource_type: None
             },
-            |call_st : FunctionArgs | {
-                if let Value::ValueList { item_type, .. } = call_st.get_unchecked(0) {
-                    return item_type.clone();
-                }
-                Type::Void
-            },
-            |mut call_st : FunctionArgs | {
-                call_st.init_state("idx", Value::int_val(0));
-                Ok(())
-            },
-            |call_st : FunctionArgs | {
-                let idx = call_st.state_value("idx").unwrap().as_bigint();
-                let num_args = call_st.get_unchecked(0).as_vec().len();
-                Ok(idx.lt(&BigInt::from(num_args)))
-            },
-            |call_st : FunctionArgs | {
-                let idx = call_st.state_value("idx").unwrap().as_bigint().to_usize().unwrap_or(0);
-                let list_vals = call_st.get_unchecked(0).as_vec();
-                let item = list_vals.get(idx).unwrap().clone();
-                Ok(item)
-            },
+            |args | {
+
+                Ok(Value::ValueStream {
+                    item_type: Type::String,
+                    has_more: |args| {
+                        Ok(true)
+                    },
+                    next: |args| {
+                        Ok(Value::ValueVoid)
+                    }
+                })
+            }
         )
     }
 
@@ -176,13 +167,21 @@ impl SpecialFunctions {
                 Ok(())
             },
             |mut args : FunctionArgs | {
-                if args.vals.len() > 0 {
-                    let t = args.get_unchecked(0).get_type();
-                    args.update_state("list",
-                                      |v| Value::ValueList {
-                                          item_type: t,
-                                          vals: v.as_vec().combine(&args.vals) });
-                }
+                args.update_state("list",
+                                  |args, v| {
+                                      if args.vals.len() > 0 {
+                                          let t = args.get_unchecked(0).get_type();
+                                          let mut local_copy = v.as_vec();
+                                          local_copy.append(&mut args.vals.clone());
+
+                                          Value::ValueList {
+                                              item_type: t,
+                                              vals: local_copy
+                                          }
+                                      } else {
+                                          v.clone()
+                                      }
+                                  });
                 Ok(args.state_value("list")
                     .unwrap_or(Value::ValueList { item_type: Type::Void, vals: vec![] }))
             },

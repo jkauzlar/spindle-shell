@@ -247,7 +247,7 @@ mod tests {
 
         match g1.match_to_concrete(&c1) {
             None => {
-                assert_eq!(1, 2, "List(A) =~ List(String)")
+                panic!("List(A) =~ List(String)")
             }
             Some(mappings) => {
                 assert!(mappings.contains_key("A"));
@@ -263,7 +263,7 @@ mod tests {
                 // expected
             }
             Some(_mappings) => {
-                assert_eq!(1, 2, "List(A) !~ String")
+                panic!("List(A) !~ String")
             }
         }
 
@@ -272,7 +272,7 @@ mod tests {
 
         match g3.match_to_concrete(&c3) {
             None => {
-                assert_eq!(1, 2, "List(A) =~ List(List(Integral))")
+                panic!("List(A) =~ List(List(Integral))")
             }
             Some(mappings) => {
                 assert!(mappings.contains_key("A"));
@@ -285,7 +285,7 @@ mod tests {
 
         match g4.match_to_concrete(&c4) {
             None => {
-                assert_eq!(1, 2, "PropertySet(Property('name1', String),Property('name2',Generic(A))) =~ PropertySet(Property('name2', Fractional),Property('name1',String))")
+                panic!("PropertySet(Property('name1', String),Property('name2',Generic(A))) =~ PropertySet(Property('name2', Fractional),Property('name1',String))")
             }
             Some(mappings) => {
                 assert!(mappings.contains_key("A"));
